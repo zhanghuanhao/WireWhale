@@ -1,0 +1,5 @@
+﻿both:
+pip install psutil scapy matplotlib
+
+windows:
+pip install wmi pywin32
