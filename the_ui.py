@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 from get_nic import get_nic_list
-from Capture import Core
+from capture_core import Core
 # 使用matplotlib绘制柱状图
 import numpy as np
 import matplotlib.pyplot as plt
@@ -716,13 +716,3 @@ class Ui_MainWindow(QMainWindow):
     #     row_count = self.info_tableView_model.rowCount()
     #     for i in range(0, row_count)[::-1]:
     #         self.info_tableView_model.removeRow(i)
-
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    ui = Ui_MainWindow()
-    ui.setupUi()
-    stop = time()
-    print(stop - start)
-    sys.exit(app.exec_())
-
