@@ -85,36 +85,15 @@ class Core:
     stop_capturing_thread = Event()
     # 开始时间戳
     start_timestamp = 0.0
-    # 存放等待显示在抓包列表的数据包信息
-    row_to_add = []
     # 临时文件路径
     temp_file = None
     # pcap writer
     writer = None
     # 计数器
     counter = {"ipv4": 0, "ipv6": 0, "tcp": 0, "udp": 0, "icmp": 0, "arp": 0}
+    start_time = 0.0
+    end_time = 0.0
 
-    def updating_thread(self):
-        """
-        更新抓包列表的线程函数
-        """
-        start_time = time.time()
-        row = []
-        while True:
-            time.sleep(0.001)
-            try:
-                row = self.row_to_add.pop(0)
-                print(len(self.row_to_add))
-                #放置更新表格函数，传入列表details
-                self.main_window.add_tableview_row(row)
-                end_time = time.time()
-                # 每1.5s聚焦到最后一行
-                if (end_time -
-                        start_time) > 2 and self.main_window.notSelected:
-                    self.main_window.info_tree.scrollToBottom()
-                    start_time = end_time
-            except IndexError:
-                pass
 
     def __init__(self, mainwindow):
         """
@@ -126,9 +105,6 @@ class Core:
             suffix=".pcap", prefix=str(int(time.time())), delete=False)
         self.temp_file = temp.name
         temp.close()
-        # thread = Thread(
-        #     target=self.updating_thread, daemon=True, name="updating_thread")
-        # thread.start()
 
     def process_packet(self, packet):
         """
@@ -149,13 +125,16 @@ class Core:
             if ether_type == "IP":
                 source = packet[IP].src
                 destination = packet[IP].dst
+                self.counter["ipv4"] += 1
             # IPv6
             elif ether_type == "IPv6":
                 source = packet[IPv6].src
                 destination = packet[IPv6].dst
                 version_add = "v6"
+                self.counter["ipv6"] += 1
             # ARP
             elif ether_type == "ARP":
+                self.counter["arp"] += 1
                 protocol = ether_type
                 source = packet[Ether].src
                 destination = packet[Ether].dst
@@ -171,12 +150,15 @@ class Core:
                 if protocol == "TCP":
                     sport = packet[TCP].sport
                     dport = packet[TCP].dport
+                    self.counter["tcp"] += 1
                 elif protocol == "UDP":
                     sport = packet[UDP].sport
                     dport = packet[UDP].dport
+                    self.counter["udp"] += 1
                 elif len(protocol) >= 4 and protocol[0:4] == "ICMP":
                     protocol = "ICMP"
                     protocol += version_add
+                    self.counter["icmp"] += 1
                 else:
                     return
                 if sport is not None and dport is not None:
@@ -193,12 +175,15 @@ class Core:
             details.append(str(len(packet)))
             info = packet.summary()
             details.append(info)
-            # 将需要显示的包放进字典中
-            #self.row_to_add.append(details)
             self.main_window.add_tableview_row(details)
             self.packet_id += 1
             self.writer.write(packet)
-            end_time = time.time()
+            self.end_time = time.time()
+            # 每1.5s聚焦到最后一行
+            if (self.end_time -
+                    self.start_time) > 2 and self.main_window.notSelected:
+                self.main_window.info_tree.scrollToBottom()
+                self.start_time = self.end_time
 
     def on_click_item(self, this_id):
         """
@@ -697,6 +682,8 @@ class Core:
                 suffix=".pcap", prefix=str(int(time.time())), delete=False)
             self.temp_file = temp.name
             temp.close()
+            self.start_time = 0.0
+            self.stop_time = 0.0
         # 如果从暂停开始
         elif self.pause_flag is True:
             # 如果抓包条件改变，停止之前的抓包并开启新线程进行新过滤条件的抓包

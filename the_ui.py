@@ -378,23 +378,50 @@ class Ui_MainWindow(QMainWindow):
 
 
     def closeEvent(self, QCloseEvent):
-        reply = QMessageBox.question(self, 'Message',
-                                     "Are you sure to quit?", QMessageBox.Yes |
-                                     QMessageBox.No, QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            # 已停止未保存
-            if self.core.start_flag is True or self.core.pause_flag is True:
+        if self.core.start_flag is True or self.core.pause_flag is True:
+            """
+                没有停止抓包
+            """
+            reply = QMessageBox.question(self, 'Message',
+                                          "您是否要停止捕获，并保存已捕获的分组?\n警告：若不保存，您捕获的分组将会丢失", QMessageBox.Save |
+                                          QMessageBox.Close | QMessageBox.Cancel, QMessageBox.Cancel)
+            if reply == QMessageBox.Cancel:
+                QCloseEvent.ignore()
+            elif reply == QMessageBox.Close:
                 self.core.stop_capture()
-            if self.core.stop_flag is True and self.core.save_flag is False:
-                reply = QMessageBox.question(self, 'Message',
-                             "Do you want to save as pcap?", QMessageBox.Yes |
-                             QMessageBox.No, QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    self.on_action_savefile_clicked()
+            elif reply == QMessageBox.Save:
+                self.core.stop_capture()
+                self.on_action_savefile_clicked()
             self.core.clean_out()
             sys.exit()
-        else:
-            QCloseEvent.ignore()
+        elif self.core.stop_flag is True and self.core.save_flag is False:
+            """
+                已停止，但没有保存文件
+            """
+            reply = QMessageBox.question(self, 'Message',
+                                         "您是否保存已捕获的分组?\n警告：若不保存，您捕获的分组将会丢失", QMessageBox.Save |
+                                         QMessageBox.Close | QMessageBox.Cancel, QMessageBox.Cancel)
+            if reply == QMessageBox.Cancel:
+                QCloseEvent.ignore()
+            elif reply == QMessageBox.Save:
+                self.on_action_savefile_clicked()
+            self.core.clean_out()
+            sys.exit()
+        elif self.core.save_flag is True or self.core.start_flag is False:
+            """
+                未工作状态
+            """
+            reply = QMessageBox.question(self, 'Message',
+                                         "您是否要退出本程序?", QMessageBox.Yes |
+                                         QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                sys.exit()
+            else:
+                QCloseEvent.ignore()
+
+
+
+
 
     """
        数据包视图 数据记录点击事件
