@@ -21,7 +21,11 @@ ColumnWidth = [110,160,160,110,110,300]
 FrameLength_List = []
 FrameList = []
 platform, netcards = get_nic_list()
-keys = list(netcards.keys())
+if platform == 'Windows':
+    keys = list(netcards.keys())
+elif platform == 'Linux':
+    keys = list(netcards)
+
 
 class Ui_MainWindow(QMainWindow):
     #核心
@@ -31,7 +35,7 @@ class Ui_MainWindow(QMainWindow):
     # info_tableView_model = QStandardItemModel()   #数据模型
 
     def setupUi(self):
-        self.setWindowTitle("NetworkCap")
+        self.setWindowTitle("WireWhale")
         self.setObjectName("MainWindow")
         self.resize(950, 580)
         icon = QIcon()
@@ -82,6 +86,8 @@ class Ui_MainWindow(QMainWindow):
         self.info_tree.setRootIsDecorated(False)
         self.info_tree.setFont(font)
         self.info_tree.setColumnCount(7)    #设置表格为7列
+        #固定行高，取消每次刷新所有行
+        self.info_tree.setUniformRowHeights(True)
         #设置表头
         self.info_tree.headerItem().setText(0, "No.")
         self.info_tree.headerItem().setText(1, "Time")
@@ -95,6 +101,7 @@ class Ui_MainWindow(QMainWindow):
         self.info_tree.setSelectionMode(QTreeWidget.SingleSelection)        #设置只能选中一行
 
         self.info_tree.clicked.connect(self.on_tableview_clicked)
+
 
         #数据包详细内容显示框
         self.treeWidget =  QTreeWidget(self.centralWidget)
@@ -300,9 +307,9 @@ class Ui_MainWindow(QMainWindow):
         self.action_exit = QAction(self)
         self.action_exit.setCheckable(False)
         self.action_exit.setText("退出")
-        self.action_exit.setShortcut("Ctr+Q")
-        self.action_exit.setObjectName("action_exit")
         self.action_exit.triggered.connect(self.on_action_exit_clicked)
+        self.action_exit.setShortcut('ctrl+Q')
+        self.action_exit.setStatusTip('退出应用程序')
 
         action = QAction(self)
         action.setText("显示过滤器")
@@ -384,6 +391,7 @@ class Ui_MainWindow(QMainWindow):
                              QMessageBox.No, QMessageBox.No)
                 if reply == QMessageBox.Yes:
                     self.on_action_savefile_clicked()
+            self.core.clean_out()
             sys.exit()
         else:
             QCloseEvent.ignore()
@@ -395,7 +403,7 @@ class Ui_MainWindow(QMainWindow):
     def on_tableview_clicked(self):
         selected_row = self.info_tree.currentIndex().row()   #当前选择的行号
         #表格停止追踪更新
-        self.notSelected = False
+        # self.notSelected = False
         """
            清空Frame Information内容
         """
@@ -407,7 +415,7 @@ class Ui_MainWindow(QMainWindow):
            Item1_1: 第二层树节点，Item1的子节点
            QTreeWidgetItem(parentNode, text)   parentNode:父节点  text：当前节点内容
         """
-        parentList, childList = self.core.on_click_item(selected_row)
+        parentList, childList, hex_dump = self.core.on_click_item(selected_row)
         p_num = len(parentList)
         for i in range(p_num):
             item1 = QTreeWidgetItem(self.treeWidget)
@@ -416,7 +424,7 @@ class Ui_MainWindow(QMainWindow):
             for j in range(c_num):
                 item1_1 = QTreeWidgetItem(item1)
                 item1_1.setText(0, childList[i][j])
-        self.set_hex_text(self.core.get_hex(selected_row))
+        self.set_hex_text(hex_dump)
 
     """
        表格添加行
@@ -433,11 +441,11 @@ class Ui_MainWindow(QMainWindow):
         """
         if mylist[4] == "UDP":
             for i in range(7):
-                item.setBackground(i, QBrush(QColor("#CCFFFF")))
-        elif mylist[4] == "HTTPS":
+                item.setBackground(i, QBrush(QColor("#daeeff")))
+        elif mylist[4] == "HTTPS" or "HTTP":
             for i in range(7):
-                item.setBackground(i, QBrush(QColor("#FFCCCC")))
-        elif mylist[4] == "HTTPSv6":
+                item.setBackground(i, QBrush(QColor("#e4ffc7")))
+        elif mylist[4] == "HTTPSv6" or "HTTPv6":
             for i in range(7):
                 item.setBackground(i, QBrush(QColor("#FFFFCC")))
         elif mylist[4] == "DNS":
@@ -445,10 +453,13 @@ class Ui_MainWindow(QMainWindow):
                 item.setBackground(i, QBrush(QColor("#CCFF99")))
         elif mylist[4] == "TCP":
             for i in range(7):
-                item.setBackground(i, QBrush(QColor("#FFCC33")))
-        elif mylist[4] == "ICMPv6":
+                item.setBackground(i, QBrush(QColor("#e7e6ff")))
+        elif mylist[4] == "ICMPv6" or "ICMP":
             for i in range(7):
-                item.setBackground(i, QBrush(QColor("#FFCC99")))
+                item.setBackground(i, QBrush(QColor("#fce0ff")))
+        elif mylist[4] == "ARP":
+            for i in range(7):
+                item.setBackground(i, QBrush(QColor("#faf0d7")))
         else:
             pass
 
@@ -602,6 +613,7 @@ class Ui_MainWindow(QMainWindow):
                 'IPv6': (IPv6_fre, '#4fc4aa'),
             }
 
+
             fig = plt.figure(figsize=(6, 4))
 
             # 创建绘图区域
@@ -656,6 +668,7 @@ class Ui_MainWindow(QMainWindow):
                                     QMessageBox.Cancel)
         
         else:
+
             labels = 'TCP', 'ICMP', 'UDP', 'ARP'
             fracs = [TCP_count, ICMP_count, UDP_count, ARP_count]
             explode = [0.1, 0.1, 0.1, 0.1]  # 0.1 凸出这部分，
@@ -688,7 +701,7 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_action_track_clicked(self):
-        QMessageBox.about(MainWindow, "About", "Track flow")
+        QMessageBox.about(self, "About", "Track flow")
 
     """
        退出点击事件
@@ -706,7 +719,29 @@ class Ui_MainWindow(QMainWindow):
                              QMessageBox.No, QMessageBox.No)
                 if reply == QMessageBox.Yes:
                     self.on_action_savefile_clicked()
+            self.core.clean_out()
             sys.exit()
+
+    """
+        进度加载框
+        num: 加载数据数量
+    """
+    def showDialog(self, num):
+        progress = QProgressDialog(self)
+        progress.setWindowTitle("请稍等")
+        progress.setLabelText("正在加载数据...")
+        progress.setCancelButtonText("取消")
+        progress.setMinimumDuration(5)   #进度条加载时间
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setRange(0, num)
+        for i in range(num):
+            progress.setValue(i)
+            if progress.wasCanceled():
+                QMessageBox.warning(self, "提示", "操作失败")
+                break
+            else:
+                progress.setValue(num)
+                QMessageBox.information(self, "提示", "操作成功")
 
 
     # """

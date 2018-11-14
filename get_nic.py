@@ -1,12 +1,14 @@
-# coding=utf-8
+# -*- coding: utf-8 -*-
+""" 获取网卡 """
 from platform import system
 from psutil import net_if_addrs
 
-''' 
-获取网卡MAC和名字对应字典 
-如: {'9C-B6-D0-0E-70-D9': 'WLAN'}
-'''
+
 def get_netcard_name():
+    '''
+    获取网卡MAC和名字对应字典
+    如: {'9C-B6-D0-0E-70-D9': 'WLAN'}
+    '''
     netcard_info = {}
     info = net_if_addrs()
     for k, v in info.items():
@@ -20,17 +22,17 @@ def get_netcard_name():
     return netcard_info
 
 
-'''
-返回(系统信息, 网卡字典或列表)
-Linux返回列表, Windows返回字典s
-字典key为网卡名字, value为NIC信息
-如: {'WLAN': 'Killer Wireless-n/a/ac 1535 Wireless Network Adapter'}
-'''
 def get_nic_list():
+    '''
+    :return: (系统信息, 网卡字典或列表)
+    Linux返回列表, Windows返回字典s
+    字典key为网卡名字, value为NIC信息
+    如: {'WLAN': 'Killer Wireless-n/a/ac 1535 Wireless Network Adapter'}
+    '''
     # 获取系统信息
     system_name = system()
     netcard_name = get_netcard_name()
-    if "Windows" == system_name:
+    if system_name == "Windows":
         import wmi
         wmi_obj = wmi.WMI()
         data = {}
@@ -43,19 +45,8 @@ def get_nic_list():
                     nic_name = str(nic.Caption)[11:]
                     data.update({net_card_name: nic_name})
         return (system_name, data)
-    elif "Linux" == system_name:
+    elif system_name == "Linux":
         List = list(netcard_name.values())
         return (system_name, List)
     else:
         return None
-
-
-if __name__ == "__main__":
-    platform, netcards = get_nic_list()
-    print(netcards)
-    '''
-    if "Windows" == platform:
-        print("现在对"+list(netcards.keys())[1]+"进行抓包")
-        print(list(netcards.values())[1])
-        print(netcards)
-        '''

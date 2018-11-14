@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-""" 抓包 """
+""" 抓包核心 """
 import tempfile
 import time
-from os import getcwd
+import os
+import shutil
 from threading import Event, Thread
-
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from scapy.compat import raw
 from scapy.layers.inet import *
@@ -67,10 +67,10 @@ class Core:
     """ 抓包后台类 """
     # 抓到的包编号从1开始
     packet_id = 1
-    # 抓到的包的列表
-    packet_list = []
     # 网卡的信息,
     netcard = None
+    # 抓包过滤条件，遵BPF规则
+    filters = None
     # 开始标志
     start_flag = False
     # 暂停标志
@@ -83,26 +83,29 @@ class Core:
     main_window = None
     # 停止抓包的线程
     stop_capturing_thread = Event()
-    # 抓包过滤条件，遵BPF规则
-    filters = None
     # 开始时间戳
-    start_timestamp = None
+    start_timestamp = 0.0
     # 存放等待显示在抓包列表的数据包信息
     row_to_add = []
+    # 临时文件路径
     temp_file = None
+    # pcap writer
     writer = None
+    # 计数器
+    counter = {"ipv4": 0, "ipv6": 0, "tcp": 0, "udp": 0, "icmp": 0, "arp": 0}
 
     def updating_thread(self):
         """
         更新抓包列表的线程函数
         """
         start_time = time.time()
+        row = []
         while True:
             time.sleep(0.001)
-            row = []
             try:
                 row = self.row_to_add.pop(0)
-                # 放置更新表格函数，传入列表details
+                print(len(self.row_to_add))
+                #放置更新表格函数，传入列表details
                 self.main_window.add_tableview_row(row)
                 end_time = time.time()
                 # 每1.5s聚焦到最后一行
@@ -119,13 +122,13 @@ class Core:
         :parma mainwindow: 传入主窗口
         """
         self.main_window = mainwindow
-        _, self.temp_file = tempfile.mkstemp(
-            suffix=".pcap", prefix=str(int(time.time())))
-        self.writer = PcapWriter(self.temp_file, append=True, sync=True)
-        print(self.temp_file)
-        thread = Thread(
-            target=self.updating_thread, daemon=True, name="updating_thread")
-        thread.start()
+        temp = tempfile.NamedTemporaryFile(
+            suffix=".pcap", prefix=str(int(time.time())), delete=False)
+        self.temp_file = temp.name
+        temp.close()
+        # thread = Thread(
+        #     target=self.updating_thread, daemon=True, name="updating_thread")
+        # thread.start()
 
     def process_packet(self, packet):
         """
@@ -191,34 +194,35 @@ class Core:
             info = packet.summary()
             details.append(info)
             # 将需要显示的包放进字典中
-            self.row_to_add.append(details)
-            # 将抓到的包存在列表中
-            self.packet_list.append(packet)
+            #self.row_to_add.append(details)
+            self.main_window.add_tableview_row(details)
             self.packet_id += 1
-            #self.writer.write(packet)
+            self.writer.write(packet)
+            end_time = time.time()
 
     def on_click_item(self, this_id):
         """
         处理点击列表中的项
         :parma this_id: 包对应的packet_id，在packet_list里获取该packet
         """
-        packet = self.packet_list[this_id]
+        previous_packet_time, packet = self.read_packet(this_id)
         # 详细信息列表, 用于添加进GUI
         first_return = []
         second_return = []
         # 第一层: Frame
         first_layer = []
-        # 抓包的长度
-        packet_len = str(len(packet)) + " bytes (" + \
+        # on wire的长度
+        packet_wirelen = str(packet.wirelen) + " bytes (" + \
             str(len(packet) << 3) + " bits)"
-        frame = ("Frame " + str(this_id) + ": " + packet_len + " captured" + (
-            (" on " + self.netcard) if self.netcard is not None else ""))
+        # 实际抓到的长度
+        packet_capturedlen = str(len(packet)) + " bytes (" + \
+            str(len(packet) << 3) + " bits)"
+        frame = "Frame " + str(this_id) + ": " + packet_wirelen + " captured on wire, " + \
+            packet_capturedlen + " captured"
         first_return.append(frame)
         # 抓包的时间
         first_layer.append("Arrival Time: " + self.time_to_formal(packet.time))
         first_layer.append("Epoch Time: " + str(packet.time) + " seconds")
-        previous_packet_time = self.packet_list[this_id -
-                                                1].time if this_id > 0 else 0
         delta_time = packet.time - previous_packet_time
         first_layer.append("[Time delta from previous captured frame: " +
                            str(delta_time) + " seconds]")
@@ -226,13 +230,15 @@ class Core:
         first_layer.append("[Time since first frame: " + str(delta_time) +
                            " seconds]")
         first_layer.append("Frame Number: " + str(this_id))
-        first_layer.append("Capture Length: " + str(packet_len))
+        first_layer.append("Frame Length: " + str(packet_wirelen))
+        first_layer.append("Capture Length: " + str(packet_capturedlen))
         # 添加第一层信息到二维列表中
         second_return.append(first_layer)
         first_temp, second_temp = self.get_next_layer(packet)
         first_return += first_temp
         second_return += second_temp
-        return first_return, second_return
+        # dump=True 将hexdump返回而不是打印
+        return first_return, second_return, hexdump(packet, dump=True)
 
     def get_next_layer(self, packet):
         """
@@ -259,8 +265,8 @@ class Core:
             ether_type = packet.payload.name
             if ether_type == "IP":
                 ether_type += "v4"
-            ether_proto = (
-                "Type: " + ether_type + " (" + hex(packet[packet_class].type) + ")")
+            ether_proto = ("Type: " + ether_type + " (" + hex(
+                packet[packet_class].type) + ")")
             next_layer.append(ether_proto)
         # 第三层: 网络层
         # IPv4
@@ -272,16 +278,20 @@ class Core:
             network += ip_src + ", Dst: " + ip_dst
             first_return.append(network)
             next_layer.append("Version: " + str(packet[packet_class].version))
-            next_layer.append("Header Length: " + str(packet[packet_class].ihl << 2) +
-                              " bytes (" + str(packet[packet_class].ihl) + ")")
+            next_layer.append("Header Length: " +
+                              str(packet[packet_class].ihl << 2) + " bytes (" +
+                              str(packet[packet_class].ihl) + ")")
             next_layer.append("Differentiated Services Field: " +
                               hex(packet[packet_class].tos))
             next_layer.append("Total Length: " + str(packet[packet_class].len))
-            next_layer.append("Identification: " + hex(packet[packet_class].id) + " (" +
+            next_layer.append("Identification: " +
+                              hex(packet[packet_class].id) + " (" +
                               str(packet[packet_class].id) + ")")
-            next_layer.append("Flags: " + str(packet[packet_class].flags) + " (" +
-                              hex(packet[packet_class].flags.value) + ")")
-            next_layer.append("Fragment offset: " + str(packet[packet_class].frag))
+            next_layer.append("Flags: " + str(packet[packet_class].flags) +
+                              " (" + hex(packet[packet_class].flags.value) +
+                              ")")
+            next_layer.append("Fragment offset: " +
+                              str(packet[packet_class].frag))
             next_layer.append("Time to live: " + str(packet[packet_class].ttl))
             next_protocol = packet.payload.name
             if next_protocol == "IP":
@@ -303,9 +313,11 @@ class Core:
                        ", Dst: " + ipv6_dst)
             first_return.append(network)
             next_layer.append("Version: " + str(packet[packet_class].version))
-            next_layer.append("Traffice Class: " + hex(packet[packet_class].tc))
+            next_layer.append("Traffice Class: " +
+                              hex(packet[packet_class].tc))
             next_layer.append("Flow Label: " + hex(packet[packet_class].fl))
-            next_layer.append("Payload Length: " + str(packet[packet_class].plen))
+            next_layer.append("Payload Length: " +
+                              str(packet[packet_class].plen))
             next_protocol = packet.payload.name
             if next_protocol == "IP":
                 next_protocol += "v4"
@@ -320,8 +332,9 @@ class Core:
             if arp_op in arp_dict:
                 network += " (" + arp_dict[arp_op] + ")"
             first_return.append(network)
-            next_layer.append("Hardware type: " + "Ethernet (" if packet[packet_class].
-                              hwtype == 1 else "(" + packet[packet_class].hwtype + ")")
+            next_layer.append("Hardware type: " +
+                              "Ethernet (" if packet[packet_class].hwtype ==
+                              1 else "(" + packet[packet_class].hwtype + ")")
             ptype = packet[packet_class].ptype
             temp_str = "Protocol type: " + hex(packet[packet_class].ptype)
             if ptype == 0x0800:
@@ -329,16 +342,22 @@ class Core:
             elif ptype == 0x86DD:
                 temp_str += " (IPv6)"
             next_layer.append(temp_str)
-            next_layer.append("Hardware size: " + str(packet[packet_class].hwlen))
-            next_layer.append("Protocol size: " + str(packet[packet_class].plen))
+            next_layer.append("Hardware size: " +
+                              str(packet[packet_class].hwlen))
+            next_layer.append("Protocol size: " +
+                              str(packet[packet_class].plen))
             temp_str = "Opcode: " + str(arp_op)
             if arp_op in arp_dict:
                 temp_str += " (" + arp_dict[arp_op] + ")"
             next_layer.append(temp_str)
-            next_layer.append("Sender MAC address: " + packet[packet_class].hwsrc)
-            next_layer.append("Sender IP address: " + packet[packet_class].psrc)
-            next_layer.append("Target MAC address: " + packet[packet_class].hwdst)
-            next_layer.append("Target IP address: " + packet[packet_class].pdst)
+            next_layer.append("Sender MAC address: " +
+                              packet[packet_class].hwsrc)
+            next_layer.append("Sender IP address: " +
+                              packet[packet_class].psrc)
+            next_layer.append("Target MAC address: " +
+                              packet[packet_class].hwdst)
+            next_layer.append("Target IP address: " +
+                              packet[packet_class].pdst)
         # 第四层: 传输层
         elif protocol == "TCP" or protocol == "TCP in ICMP":
             src_port = packet[packet_class].sport
@@ -348,20 +367,25 @@ class Core:
             first_return.append(transport)
             next_layer.append("Source Port: " + str(src_port))
             next_layer.append("Destination Port: " + str(dst_port))
-            next_layer.append("Sequence number: " + str(packet[packet_class].seq))
-            next_layer.append("Acknowledgment number: " + str(packet[packet_class].ack))
+            next_layer.append("Sequence number: " +
+                              str(packet[packet_class].seq))
+            next_layer.append("Acknowledgment number: " +
+                              str(packet[packet_class].ack))
             tcp_head_length = packet[packet_class].dataofs
             next_layer.append("Header Length: " + str(tcp_head_length << 2) +
                               " bytes (" + str(tcp_head_length) + ")")
-            next_layer.append("Flags: " + hex(packet[packet_class].flags.value) + " (" +
+            next_layer.append("Flags: " +
+                              hex(packet[packet_class].flags.value) + " (" +
                               str(packet[packet_class].flags) + ")")
-            next_layer.append("Window size value: " + str(packet[packet_class].window))
+            next_layer.append("Window size value: " +
+                              str(packet[packet_class].window))
             tcp_chksum = packet[packet_class].chksum
             tcp_check = packet_class(raw(packet[packet_class])).chksum
             next_layer.append("Checksum: " + hex(tcp_chksum))
             next_layer.append("[Checksum status: " + "Correct]" if tcp_check ==
                               tcp_chksum else "Incorrect]")
-            next_layer.append("Urgent pointer: " + str(packet[packet_class].urgptr))
+            next_layer.append("Urgent pointer: " +
+                              str(packet[packet_class].urgptr))
             options = packet[packet_class].options
             options_length = len(options) << 2
             if options_length > 0:
@@ -407,10 +431,11 @@ class Core:
             next_layer.append("Checksum: " + hex(icmp_chksum))
             next_layer.append("[Checksum status: " + "Correct]" if icmp_check
                               == icmp_chksum else "Incorrect]")
-            next_layer.append("Identifier: " + str(packet[packet_class].id) + " (" +
-                              hex(packet[packet_class].id) + ")")
-            next_layer.append("Sequence number: " + str(packet[packet_class].seq) +
-                              " (" + hex(packet[packet_class].seq) + ")")
+            next_layer.append("Identifier: " + str(packet[packet_class].id) +
+                              " (" + hex(packet[packet_class].id) + ")")
+            next_layer.append("Sequence number: " +
+                              str(packet[packet_class].seq) + " (" +
+                              hex(packet[packet_class].seq) + ")")
             data_length = len(packet.payload)
             if data_length > 0:
                 next_layer.append("Data (" + str(data_length) + " bytes): " +
@@ -658,7 +683,7 @@ class Core:
                     QMessageBox.Cancel,
                 )
                 if resault == QMessageBox.Yes:
-                    print("先保存数据包,在进行抓包")
+                    print("先保存数据包, 再进行抓包")
                     self.save_captured_to_pcap()
                     self.save_flag = False
                 else:
@@ -667,7 +692,11 @@ class Core:
             self.save_flag = False
             self.pause_flag = False
             self.packet_id = 1
-            self.packet_list.clear()
+            self.clean_out()
+            temp = tempfile.NamedTemporaryFile(
+                suffix=".pcap", prefix=str(int(time.time())), delete=False)
+            self.temp_file = temp.name
+            temp.close()
         # 如果从暂停开始
         elif self.pause_flag is True:
             # 如果抓包条件改变，停止之前的抓包并开启新线程进行新过滤条件的抓包
@@ -681,6 +710,8 @@ class Core:
         self.filters = filters
         self.netcard = netcard
         # 开启新线程进行抓包
+        # 第一个参数可以传入文件对象或者文件名字
+        self.writer = PcapWriter(self.temp_file, append=True, sync=True)
         thread = Thread(
             target=self.capture_packet, daemon=True, name="capture_packet")
         thread.start()
@@ -726,7 +757,7 @@ class Core:
         filename, _ = QFileDialog.getSaveFileName(
             parent=self.main_window.this_MainWindow,
             caption="保存文件",
-            directory=getcwd(),
+            directory=os.getcwd(),
             filter="All Files (*);;Pcap Files (*.pcap)",
         )
         if filename == "":
@@ -737,7 +768,7 @@ class Core:
         if filename.find(".pcap") == -1:
             # 默认文件格式为 pcap
             filename = filename + ".pcap"
-        wrpcap(filename, self.packet_list)
+        shutil.copy(self.temp_file, filename)
         QMessageBox.information(self.main_window.this_MainWindow, "提示",
                                 "保存成功！")
         self.save_flag = True
@@ -760,7 +791,7 @@ class Core:
         filename, _ = QFileDialog.getOpenFileName(
             parent=self.main_window.this_MainWindow,
             caption="打开文件",
-            directory=getcwd(),
+            directory=os.getcwd(),
             filter="All Files (*);;Pcap Files (*.pcap)",
         )
         if filename == "":
@@ -773,7 +804,6 @@ class Core:
             # 默认文件格式为 pcap
             filename = filename + ".pcap"
         self.packet_id = 1
-        self.packet_list.clear()
         self.main_window.info_tree.setUpdatesEnabled(False)
         sniff(
             prn=(lambda x: self.process_packet(x)),
@@ -783,42 +813,103 @@ class Core:
         self.stop_flag = True
         self.save_flag = True
 
-    def get_hex(self, packet_id):
-        """
-        获取数据包的hexdump()
-        :parma packet_id: 传入包对应的序号
-        """
-        # dump=True 将hexdump返回而不是打印
-        return hexdump(self.packet_list[packet_id], dump=True)
+    def clean_out(self):
+        '''
+        清除临时文件
+        '''
+        if self.writer is not None:
+            self.writer.close()
+        os.remove(self.temp_file)
+        # 将字典中的值初始化为0
+        self.counter = {}.fromkeys(list(self.counter.keys()), 0)
 
     def get_transport_count(self):
         """
         获取传输层数据包的数量
         """
-        counter = {"tcp": 0, "udp": 0, "icmp": 0, "arp": 0}
-        packet_list = self.packet_list.copy()
-        for packet in packet_list:
-            if TCP in packet:
-                counter["tcp"] += 1
-            elif UDP in packet:
-                counter["udp"] += 1
-            elif ICMP in packet:
-                counter["icmp"] += 1
-            elif ARP in packet:
-                counter["arp"] += 1
-            elif packet.payload.payload.name[0:6] == "ICMPv6":
-                counter["icmp"] += 1
-        return counter
+        keys = ['tcp', 'udp', 'icmp', 'arp']
+        counter_copy = self.counter.copy()
+        return_dict = {}
+        for key, value in counter_copy.items():
+            if key in keys:
+                return_dict.update({key:value})
+        return return_dict
 
     def get_network_count(self):
         """
         获取网络层数据包的数量
         """
-        counter = {"ipv4": 0, "ipv6": 0}
-        packet_list = self.packet_list.copy()
-        for packet in packet_list:
-            if IP in packet:
-                counter["ipv4"] += 1
-            elif IPv6 in packet:
-                counter["ipv6"] += 1
-        return counter
+        keys = ['ipv4', 'ipv6']
+        counter_copy = self.counter.copy()
+        return_dict = {}
+        for key, value in counter_copy.items():
+            if key in keys:
+                return_dict.update({key:value})
+        return return_dict
+
+    def read_packet(self, location):
+        '''
+        读取硬盘中的pcap数据
+        :parma location: 数据包位置
+        :return: 返回参数列表[上一个数据包的时间，数据包]
+        '''
+        start = time.time()
+        # 数据包时间是否为纳秒级
+        nano = False
+        # 打开文件
+        f = open(self.temp_file, "rb")
+        # 获取Pcap格式 magic
+        head = f.read(24)
+        magic = head[:4]
+        linktype = head[20:]
+        if magic == b"\xa1\xb2\xc3\xd4":  # big endian
+            endian = ">"
+            nano = False
+        elif magic == b"\xd4\xc3\xb2\xa1":  # little endian
+            endian = "<"
+            nano = False
+        elif magic == b"\xa1\xb2\x3c\x4d":  # big endian, nanosecond-precision
+            endian = ">"
+            nano = True
+        elif magic == b"\x4d\x3c\xb2\xa1":  # little endian, nanosecond-precision
+            endian = "<"
+            nano = True
+        else:
+            # 不是pcap文件，弹出错误
+            f.close()
+            return
+        linktype = struct.unpack(endian + "I", linktype)[0]
+        try:
+            LLcls = conf.l2types[linktype]
+        except KeyError:
+            # 未知 LinkType
+            LLcls = conf.raw_layer
+        sec, usec, caplen = [0, 0, 0]
+        for _ in range(location):
+            packet_head = f.read(16)
+            if len(packet_head) < 16:
+                f.close()
+                return None
+            sec, usec, caplen = struct.unpack(endian + "III", packet_head[:12])
+            # f.seek(offset=?, whence=?)
+            # :parma offset: 偏移量
+            # :parma whence: 开始的位置 0从头开始 1从当前位置 2从文件末尾
+            f.seek(caplen, 1)
+        previous_time = sec + (0.000000001 if nano else 0.000001) * usec
+        packet_head = f.read(16)
+        sec, usec, caplen, wirelen = struct.unpack(endian + "IIII",
+                                                   packet_head)
+        rp = f.read(caplen)[:0xFFFF]
+        if rp is None:
+            f.close()
+            return None
+        try:
+            p = LLcls(rp)
+        except:
+            p = conf.raw_layer(rp)
+        p.time = sec + (0.000000001 if nano else 0.000001) * usec
+        p.wirelen = wirelen
+        stop = time.time()
+        print("读取文件用时: " + str(stop - start))
+        f.close()
+        return previous_time, p
