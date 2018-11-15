@@ -6,6 +6,7 @@ start = time()
 import sys
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
+from PyQt5 import QtCore
 from PyQt5.QtCore import *
 from get_nic import get_nic_list
 from capture_core import Core
@@ -21,6 +22,7 @@ ColumnWidth = [110,160,160,110,110,300]
 FrameLength_List = []
 FrameList = []
 platform, netcards = get_nic_list()
+flush_time = 2000
 if platform == 'Windows':
     keys = list(netcards.keys())
 elif platform == 'Linux':
@@ -31,7 +33,7 @@ class Ui_MainWindow(QMainWindow):
     #核心
     core = None
     this_MainWindow = None
-    notSelected = True
+    timer = None
     # info_tableView_model = QStandardItemModel()   #数据模型
 
     def setupUi(self):
@@ -77,11 +79,9 @@ class Ui_MainWindow(QMainWindow):
         font.setFamily("Arial")
         font.setPointSize(11)
 
-        #数据包显示框                                                #********把tableview换成treewidget
+        #数据包显示框
         self.info_tree = QTreeWidget(self.centralWidget)
-        self.info_tree.setObjectName("info_tree")
         self.info_tree.setFrameStyle(QFrame.Box | QFrame.Plain)
-        # self.info_tree.setHeaderHidden(True)
         self.info_tree.setAutoScroll(True)
         self.info_tree.setRootIsDecorated(False)
         self.info_tree.setFont(font)
@@ -99,6 +99,11 @@ class Ui_MainWindow(QMainWindow):
 
         self.info_tree.setSelectionBehavior(QTreeWidget.SelectRows)        #设置选中时为整行选中
         self.info_tree.setSelectionMode(QTreeWidget.SingleSelection)        #设置只能选中一行
+
+        self.info_tree.setSortingEnabled(True)
+        """显示排序图标"""
+        self.info_tree.header().setSortIndicatorShown(True)
+        self.info_tree.header().setSortIndicator(0, Qt.AscendingOrder)
 
         self.info_tree.clicked.connect(self.on_tableview_clicked)
 
@@ -173,8 +178,6 @@ class Ui_MainWindow(QMainWindow):
         for i in range(row_num):
             self.choose_nicbox.addItem(keys[i])
 
-
-        #self.choose_nicbox.activated[str].connect(self.onActivated)
 
         self.info_tree.raise_()
         self.treeWidget.raise_()
@@ -283,6 +286,15 @@ class Ui_MainWindow(QMainWindow):
         self.actionRestart.setDisabled(True)  # 开始时该按钮不可点击
         self.actionRestart.triggered.connect(self.on_actionRestart_clicked)
 
+        #更新数据键
+        self.action_update = QAction(self)
+        icon5 = QIcon()
+        icon5.addPixmap(QPixmap("img/update.jpg"), QIcon.Normal, QIcon.Off)
+        self.action_update.setIcon(icon5)
+        self.action_update.setDisabled(True)
+        self.action_update.setShortcut('space')
+        self.action_update.triggered.connect(lambda: self.timer.start(flush_time))
+
         #帮助文档
         action_readme = QAction(self)
         action_readme.setText("说明文档")
@@ -340,6 +352,7 @@ class Ui_MainWindow(QMainWindow):
         self.mainToolBar.addAction(self.pause_action)
         self.mainToolBar.addAction(self.stop_action)
         self.mainToolBar.addAction(self.actionRestart)
+        self.mainToolBar.addAction(self.action_update)
 
         self.menu_F.addAction(action_openfile)
         self.menu_F.addAction(action_savefile)
@@ -369,14 +382,17 @@ class Ui_MainWindow(QMainWindow):
         self.menuBar.addAction(self.menu_Statistic.menuAction())
         self.menuBar.addAction(self.menu_H.menuAction())
 
-
-        # self.retranslateUi()
         QMetaObject.connectSlotsByName(self)
         self.core = Core(self)
-        # self.this_MainWindow = MainWindow
+        # 设置定时器将抓包列表置底
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.info_tree.scrollToBottom)
         self.show()
 
 
+    """
+        重写窗口关闭事件
+    """
     def closeEvent(self, QCloseEvent):
         if self.core.start_flag is True or self.core.pause_flag is True:
             """
@@ -419,18 +435,21 @@ class Ui_MainWindow(QMainWindow):
             else:
                 QCloseEvent.ignore()
 
-
-
-
-
     """
        数据包视图 数据记录点击事件
        点击列表中一条记录时，在下面的frame框中显示帧的详细信息
     """
     def on_tableview_clicked(self):
-        selected_row = self.info_tree.currentIndex().row()   #当前选择的行号
+        selected_row = self.info_tree.currentIndex().row()  #当前选择的行号
         #表格停止追踪更新
-        # self.notSelected = False
+        self.timer.stop()
+        self.show_infoTree(selected_row)
+        self.action_update.setDisabled(False)
+
+    """
+        展开帧的详细信息
+    """
+    def show_infoTree(self, selected_row):
         """
            清空Frame Information内容
         """
@@ -462,7 +481,11 @@ class Ui_MainWindow(QMainWindow):
             添加行内容
         """
         for i in range(7):
-            item.setText(i, mylist[i])
+            if i == 0 or i == 5:
+                item.setData(i, Qt.DisplayRole, float(mylist[i]))
+            else:
+                item.setText(i, mylist[i])
+
         """
             根据协议类型不同设置颜色
         """
@@ -546,7 +569,6 @@ class Ui_MainWindow(QMainWindow):
             self.info_tree.clear()
             self.treeWidget.clear()
             self.set_hex_text("")
-        self.notSelected = True
         self.core.start_capture(self.get_choose_nic(), self.Filer.text())
         """
            点击开始后，过滤器不可编辑，开始按钮、网卡选择框全部设为不可选
@@ -559,6 +581,8 @@ class Ui_MainWindow(QMainWindow):
         self.actionRestart.setDisabled(False)
         self.pause_action.setEnabled(True)
         self.stop_action.setEnabled(True)
+        self.timer.start(flush_time)
+        self.showDialog(50000)
 
 
 
@@ -574,10 +598,11 @@ class Ui_MainWindow(QMainWindow):
         self.start_action.setDisabled(False)
         self.stop_action.setDisabled(False)
         self.actionRestart.setDisabled(False)
-        self.Filer.setDisabled(False)
-        self.FilerButton.setDisabled(False)
+        self.Filer.setDisabled(True)
+        self.FilerButton.setDisabled(True)
         self.choose_nicbox.setDisabled(False)    
         self.pause_action.setDisabled(True)
+        self.timer.stop()
 
 
     """
@@ -594,6 +619,7 @@ class Ui_MainWindow(QMainWindow):
         self.Filer.setDisabled(False)
         self.FilerButton.setDisabled(False)
         self.choose_nicbox.setDisabled(False)
+        self.timer.stop()
 
 
     """
@@ -604,7 +630,6 @@ class Ui_MainWindow(QMainWindow):
         self.info_tree.clear()
         self.treeWidget.clear()
         self.set_hex_text("")
-        self.notSelected = True
         self.core.restart_capture(self.get_choose_nic(), self.Filer.text())
         """
            点击开始后，过滤器不可编辑，开始按钮，网卡选择框全部设为不可选
@@ -617,6 +642,7 @@ class Ui_MainWindow(QMainWindow):
         self.choose_nicbox.setEnabled(False)
         self.pause_action.setEnabled(True)
         self.stop_action.setEnabled(True)
+        self.timer.start(flush_time)
 
     """
         IP地址类型统计图绘制
@@ -758,7 +784,7 @@ class Ui_MainWindow(QMainWindow):
         progress.setWindowTitle("请稍等")
         progress.setLabelText("正在加载数据...")
         progress.setCancelButtonText("取消")
-        progress.setMinimumDuration(5)   #进度条加载时间
+        progress.setMinimumDuration(1)   #进度条加载时间
         progress.setWindowModality(Qt.WindowModal)
         progress.setRange(0, num)
         for i in range(num):
@@ -766,15 +792,15 @@ class Ui_MainWindow(QMainWindow):
             if progress.wasCanceled():
                 QMessageBox.warning(self, "提示", "操作失败")
                 break
-            else:
-                progress.setValue(num)
-                QMessageBox.information(self, "提示", "操作成功")
+        progress.setValue(num)
+        QMessageBox.information(self, "提示", "操作成功")
 
 
-    # """
-    #    数据包表格清空
-    # """
-    # def table_view_clear(self):
-    #     row_count = self.info_tableView_model.rowCount()
-    #     for i in range(0, row_count)[::-1]:
-    #         self.info_tableView_model.removeRow(i)
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key_Up or Qt.Key_Down:
+            self.timer.stop()
+            row = self.info_tree.currentIndex().row()
+            self.show_infoTree(row)
+            self.action_update.setDisabled(False)
+        if event.key() == Qt.Key_Space:
+            self.timer.start(flush_time)

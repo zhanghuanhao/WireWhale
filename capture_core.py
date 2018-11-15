@@ -67,10 +67,6 @@ class Core:
     """ 抓包后台类 """
     # 抓到的包编号从1开始
     packet_id = 1
-    # 网卡的信息,
-    netcard = None
-    # 抓包过滤条件，遵BPF规则
-    filters = None
     # 开始标志
     start_flag = False
     # 暂停标志
@@ -87,13 +83,8 @@ class Core:
     start_timestamp = 0.0
     # 临时文件路径
     temp_file = None
-    # pcap writer
-    writer = None
     # 计数器
     counter = {"ipv4": 0, "ipv6": 0, "tcp": 0, "udp": 0, "icmp": 0, "arp": 0}
-    start_time = 0.0
-    end_time = 0.0
-
 
     def __init__(self, mainwindow):
         """
@@ -106,7 +97,7 @@ class Core:
         self.temp_file = temp.name
         temp.close()
 
-    def process_packet(self, packet):
+    def process_packet(self, packet, writer):
         """
         处理抓到的数据包
         :parma packet: 需要处理分类的包
@@ -114,9 +105,6 @@ class Core:
         # 如果暂停，则不对列表进行更新操作
         if self.pause_flag is False and packet.name == "Ethernet":
             details = []
-            # 第一次开始或者停止后开始, 暂停后开始packet_id!=1
-            if self.packet_id == 1:
-                self.start_timestamp = packet.time
             packet_time = packet.time - self.start_timestamp
             #第二层
             ether_type = packet.payload.name
@@ -177,13 +165,8 @@ class Core:
             details.append(info)
             self.main_window.add_tableview_row(details)
             self.packet_id += 1
-            self.writer.write(packet)
-            self.end_time = time.time()
-            # 每1.5s聚焦到最后一行
-            if (self.end_time -
-                    self.start_time) > 2 and self.main_window.notSelected:
-                self.main_window.info_tree.scrollToBottom()
-                self.start_time = self.end_time
+            if writer is not None:
+                writer.write(packet)
 
     def on_click_item(self, this_id):
         """
@@ -634,7 +617,7 @@ class Core:
         my_time += delta_ms[1:8]
         return my_time
 
-    def capture_packet(self):
+    def capture_packet(self, netcard, filters, writer):
         """
         抓取数据包
         """
@@ -642,11 +625,13 @@ class Core:
         # 抓取数据包并将抓到的包存在列表中
         # sniff中的store=False 表示不保存在内存中，防止内存使用过高
         sniff(
-            iface=self.netcard,
-            prn=(lambda x: self.process_packet(x)),
-            filter=self.filters,
+            iface=netcard,
+            prn=(lambda x: self.process_packet(x, writer)),
+            filter=filters,
             stop_filter=(lambda x: self.stop_capturing_thread.is_set()),
             store=False)
+        # 执行完成关闭writer
+        writer.close()
 
     def start_capture(self, netcard=None, filters=None):
         """
@@ -682,25 +667,21 @@ class Core:
                 suffix=".pcap", prefix=str(int(time.time())), delete=False)
             self.temp_file = temp.name
             temp.close()
-            self.start_time = 0.0
-            self.stop_time = 0.0
         # 如果从暂停开始
         elif self.pause_flag is True:
-            # 如果抓包条件改变，停止之前的抓包并开启新线程进行新过滤条件的抓包
-            if filters != self.filters or netcard != self.netcard:
-                self.stop_capture()
-                self.stop_flag = False
-            # 如果没改变则继续将抓到的包显示
+            # 继续显示抓到的包显示
             self.pause_flag = False
             self.start_flag = True
             return
-        self.filters = filters
-        self.netcard = netcard
         # 开启新线程进行抓包
         # 第一个参数可以传入文件对象或者文件名字
-        self.writer = PcapWriter(self.temp_file, append=True, sync=True)
+        writer = PcapWriter(self.temp_file, append=True, sync=True)
+        self.start_timestamp = time.time()
         thread = Thread(
-            target=self.capture_packet, daemon=True, name="capture_packet")
+            target=self.capture_packet,
+            daemon=True,
+            name="capture_packet",
+            args=(netcard, filters, writer))
         thread.start()
         self.start_flag = True
 
@@ -793,7 +774,7 @@ class Core:
         self.packet_id = 1
         self.main_window.info_tree.setUpdatesEnabled(False)
         sniff(
-            prn=(lambda x: self.process_packet(x)),
+            prn=(lambda x: self.process_packet(x, None)),
             store=False,
             offline=filename)
         self.main_window.info_tree.setUpdatesEnabled(True)
@@ -804,8 +785,6 @@ class Core:
         '''
         清除临时文件
         '''
-        if self.writer is not None:
-            self.writer.close()
         os.remove(self.temp_file)
         # 将字典中的值初始化为0
         self.counter = {}.fromkeys(list(self.counter.keys()), 0)
@@ -819,7 +798,7 @@ class Core:
         return_dict = {}
         for key, value in counter_copy.items():
             if key in keys:
-                return_dict.update({key:value})
+                return_dict.update({key: value})
         return return_dict
 
     def get_network_count(self):
@@ -831,7 +810,7 @@ class Core:
         return_dict = {}
         for key, value in counter_copy.items():
             if key in keys:
-                return_dict.update({key:value})
+                return_dict.update({key: value})
         return return_dict
 
     def read_packet(self, location):
