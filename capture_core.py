@@ -646,7 +646,7 @@ class Core:
         if self.stop_flag is True:
             if self.save_flag is False:
                 resault = QMessageBox.question(
-                    self.main_window.this_MainWindow,
+                    None,
                     "提示",
                     "是否保存已抓取的数据包？",
                     QMessageBox.Yes,
@@ -655,7 +655,6 @@ class Core:
                 if resault == QMessageBox.Yes:
                     print("先保存数据包, 再进行抓包")
                     self.save_captured_to_pcap()
-                    self.save_flag = False
                 else:
                     print("直接开始不保存")
             self.stop_flag = False
@@ -713,23 +712,19 @@ class Core:
         """
         将抓到的数据包保存为pcap格式的文件
         """
-        if self.start_flag is True or self.pause_flag is True:
-            QMessageBox.warning(self.main_window.this_MainWindow, "警告",
-                                "请停止当前抓包！")
-            return
         if self.packet_id == 1:
-            QMessageBox.warning(self.main_window.this_MainWindow, "警告",
+            QMessageBox.warning(None, "警告",
                                 "没有可保存的数据包！")
             return
         # 选择保存名称
         filename, _ = QFileDialog.getSaveFileName(
-            parent=self.main_window.this_MainWindow,
+            parent=None,
             caption="保存文件",
             directory=os.getcwd(),
             filter="All Files (*);;Pcap Files (*.pcap)",
         )
         if filename == "":
-            QMessageBox.warning(self.main_window.this_MainWindow, "警告",
+            QMessageBox.warning(None, "警告",
                                 "保存失败！")
             return
         # 如果没有设置后缀名（保险起见，默认是有后缀的）
@@ -737,7 +732,7 @@ class Core:
             # 默认文件格式为 pcap
             filename = filename + ".pcap"
         shutil.copy(self.temp_file, filename)
-        QMessageBox.information(self.main_window.this_MainWindow, "提示",
+        QMessageBox.information(None, "提示",
                                 "保存成功！")
         self.save_flag = True
 
@@ -745,19 +740,17 @@ class Core:
         """
         打开pcap格式的文件
         """
-        if self.start_flag is True or self.pause_flag is True:
-            QMessageBox.warning(self.main_window.this_MainWindow, "警告",
-                                "请停止当前抓包！")
-            return
         if self.stop_flag is True and self.save_flag is False:
             reply = QMessageBox.question(
-                self.main_window.this_MainWindow, 'Message',
-                "Do you want to save as pcap?",
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                    None,
+                    "提示",
+                    "是否保存已抓取的数据包？",
+                    QMessageBox.Yes,
+                    QMessageBox.Cancel,)
             if reply == QMessageBox.Yes:
                 self.save_captured_to_pcap()
         filename, _ = QFileDialog.getOpenFileName(
-            parent=self.main_window.this_MainWindow,
+            parent=None,
             caption="打开文件",
             directory=os.getcwd(),
             filter="All Files (*);;Pcap Files (*.pcap)",
