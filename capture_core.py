@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """ 抓包核心 """
-import tempfile
+from tempfile import NamedTemporaryFile
 import time
 import os
 import shutil
@@ -12,6 +12,14 @@ from scapy.layers.inet6 import *
 from scapy.layers.l2 import Ether
 from scapy.sendrecv import sniff
 from scapy.utils import *
+from get_nic import get_nic_list
+
+platform, netcards = get_nic_list()
+flush_time = 2000
+if platform == 'Windows':
+    keys = list(netcards.keys())
+elif platform == 'Linux':
+    keys = list(netcards)
 
 # arp字典
 arp_dict = {
@@ -62,8 +70,11 @@ ports = {
     69: "TFTP"
 }
 
+# 停止抓包的线程
+stop_capturing_thread = Event()
 
-class Core:
+
+class Core():
     """ 抓包后台类 """
     # 抓到的包编号从1开始
     packet_id = 1
@@ -77,8 +88,6 @@ class Core:
     save_flag = False
     # 窗口
     main_window = None
-    # 停止抓包的线程
-    stop_capturing_thread = Event()
     # 开始时间戳
     start_timestamp = 0.0
     # 临时文件路径
@@ -92,7 +101,7 @@ class Core:
         :parma mainwindow: 传入主窗口
         """
         self.main_window = mainwindow
-        temp = tempfile.NamedTemporaryFile(
+        temp = NamedTemporaryFile(
             suffix=".pcap", prefix=str(int(time.time())), delete=False)
         self.temp_file = temp.name
         temp.close()
@@ -173,6 +182,8 @@ class Core:
         处理点击列表中的项
         :parma this_id: 包对应的packet_id，在packet_list里获取该packet
         """
+        if this_id is None:
+            return
         previous_packet_time, packet = self.read_packet(this_id)
         # 详细信息列表, 用于添加进GUI
         first_return = []
@@ -617,18 +628,43 @@ class Core:
         my_time += delta_ms[1:8]
         return my_time
 
-    def capture_packet(self, netcard, filters, writer):
+    def flow_count(self, netcard=None):
+        """
+        刷新下载速度、上传速度、发包速度和收包速度
+        """
+        from get_rate import get_rate
+        if netcard is not None and platform == 'Windows':
+            # 反转键值对
+            my_dict = dict(zip(netcards.values(), netcards.keys()))
+            netcard = my_dict[netcard]
+        while stop_capturing_thread.is_set() is False:
+            recv_bytes, sent_bytes, recv_pak, sent_pak = get_rate(netcard)
+            self.main_window.comNum.setText('下载速度：' + recv_bytes)
+            self.main_window.baudNum.setText('上传速度：' + sent_bytes)
+            self.main_window.getSpeed.setText('收包速度：' + recv_pak)
+            self.main_window.sendSpeed.setText('发包速度：' + sent_pak)
+        self.main_window.comNum.setText('下载速度：0 B/s')
+        self.main_window.baudNum.setText('上传速度：0 B/s')
+        self.main_window.getSpeed.setText('收包速度：0 pak/s')
+        self.main_window.sendSpeed.setText('发包速度：0 pak/s')
+            
+
+    def capture_packet(self, netcard, filters):
         """
         抓取数据包
         """
-        self.stop_capturing_thread.clear()
+        stop_capturing_thread.clear()
+        # 第一个参数可以传入文件对象或者文件名字
+        writer = PcapWriter(self.temp_file, append=True, sync=True)
+        thread = Thread(target=self.flow_count, daemon=True, args=(netcard,))
+        thread.start()
         # 抓取数据包并将抓到的包存在列表中
         # sniff中的store=False 表示不保存在内存中，防止内存使用过高
         sniff(
             iface=netcard,
             prn=(lambda x: self.process_packet(x, writer)),
             filter=filters,
-            stop_filter=(lambda x: self.stop_capturing_thread.is_set()),
+            stop_filter=(lambda x: stop_capturing_thread.is_set()),
             store=False)
         # 执行完成关闭writer
         writer.close()
@@ -644,7 +680,7 @@ class Core:
             return
         # 如果已经停止且未保存数据包，则提示是否保存数据包
         if self.stop_flag is True:
-            if self.save_flag is False:
+            if self.save_flag is False and self.packet_id > 1:
                 resault = QMessageBox.question(
                     None,
                     "提示",
@@ -662,7 +698,7 @@ class Core:
             self.pause_flag = False
             self.packet_id = 1
             self.clean_out()
-            temp = tempfile.NamedTemporaryFile(
+            temp = NamedTemporaryFile(
                 suffix=".pcap", prefix=str(int(time.time())), delete=False)
             self.temp_file = temp.name
             temp.close()
@@ -673,14 +709,12 @@ class Core:
             self.start_flag = True
             return
         # 开启新线程进行抓包
-        # 第一个参数可以传入文件对象或者文件名字
-        writer = PcapWriter(self.temp_file, append=True, sync=True)
         self.start_timestamp = time.time()
         thread = Thread(
             target=self.capture_packet,
             daemon=True,
             name="capture_packet",
-            args=(netcard, filters, writer))
+            args=(netcard, filters))
         thread.start()
         self.start_flag = True
 
@@ -696,7 +730,7 @@ class Core:
         停止抓包，关闭线程
         """
         # 通过设置终止线程，停止抓包
-        self.stop_capturing_thread.set()
+        stop_capturing_thread.set()
         self.stop_flag = True
         self.pause_flag = False
         self.start_flag = False
@@ -713,8 +747,7 @@ class Core:
         将抓到的数据包保存为pcap格式的文件
         """
         if self.packet_id == 1:
-            QMessageBox.warning(None, "警告",
-                                "没有可保存的数据包！")
+            QMessageBox.warning(None, "警告", "没有可保存的数据包！")
             return
         # 选择保存名称
         filename, _ = QFileDialog.getSaveFileName(
@@ -724,16 +757,14 @@ class Core:
             filter="All Files (*);;Pcap Files (*.pcap)",
         )
         if filename == "":
-            QMessageBox.warning(None, "警告",
-                                "保存失败！")
+            QMessageBox.warning(None, "警告", "保存失败！")
             return
         # 如果没有设置后缀名（保险起见，默认是有后缀的）
         if filename.find(".pcap") == -1:
             # 默认文件格式为 pcap
             filename = filename + ".pcap"
         shutil.copy(self.temp_file, filename)
-        QMessageBox.information(None, "提示",
-                                "保存成功！")
+        QMessageBox.information(None, "提示", "保存成功！")
         self.save_flag = True
 
     def open_pcap_file(self):
@@ -742,11 +773,12 @@ class Core:
         """
         if self.stop_flag is True and self.save_flag is False:
             reply = QMessageBox.question(
-                    None,
-                    "提示",
-                    "是否保存已抓取的数据包？",
-                    QMessageBox.Yes,
-                    QMessageBox.Cancel,)
+                None,
+                "提示",
+                "是否保存已抓取的数据包？",
+                QMessageBox.Yes,
+                QMessageBox.Cancel,
+            )
             if reply == QMessageBox.Yes:
                 self.save_captured_to_pcap()
         filename, _ = QFileDialog.getOpenFileName(
@@ -778,7 +810,10 @@ class Core:
         '''
         清除临时文件
         '''
-        os.remove(self.temp_file)
+        try:
+            os.remove(self.temp_file)
+        except PermissionError:
+            pass
         # 将字典中的值初始化为0
         self.counter = {}.fromkeys(list(self.counter.keys()), 0)
 

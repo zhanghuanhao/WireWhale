@@ -1,14 +1,9 @@
 # -*- coding: utf-8 -*-
-from time import time
-
-start = time()
-
-import sys
+from sys import exit
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
-from get_nic import get_nic_list
-from capture_core import Core
+from capture_core import *
 # 使用matplotlib绘制柱状图
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,12 +12,7 @@ import matplotlib.pyplot as plt
 plt.rcParams['font.sans-serif'] = ['SimHei']
 # 解决‘-’表现为方块的问题
 plt.rcParams['axes.unicode_minus'] = False
-platform, netcards = get_nic_list()
-flush_time = 2000
-if platform == 'Windows':
-    keys = list(netcards.keys())
-elif platform == 'Linux':
-    keys = list(netcards)
+
 
 
 class Ui_MainWindow(QMainWindow):
@@ -81,12 +71,13 @@ class Ui_MainWindow(QMainWindow):
         self.info_tree.headerItem().setText(5, "Length")
         self.info_tree.headerItem().setText(6, "Info")
         self.info_tree.setStyleSheet("background:transparent;")
-
+        self.info_tree.setSortingEnabled(True)
+        self.info_tree.sortItems(0, Qt.AscendingOrder)
+        for i in range(7):
+            self.info_tree.headerItem().setBackground(i, QBrush(QColor(Qt.white)))
         self.info_tree.setSelectionBehavior(
             QTreeWidget.SelectRows)  #设置选中时为整行选中
         self.info_tree.setSelectionMode(QTreeWidget.SingleSelection)  #设置只能选中一行
-
-        self.info_tree.setSortingEnabled(True)
         """显示排序图标"""
         self.info_tree.header().setSortIndicatorShown(True)
         self.info_tree.clicked.connect(self.on_tableview_clicked)
@@ -208,7 +199,6 @@ class Ui_MainWindow(QMainWindow):
         icon2.addPixmap(QPixmap("img/start.png"), QIcon.Normal, QIcon.Off)
         self.start_action.setIcon(icon2)
         self.start_action.setText("开始")
-        self.start_action.setCheckable(True)
         self.start_action.triggered.connect(self.on_start_action_clicked)
 
         #停止键
@@ -223,7 +213,7 @@ class Ui_MainWindow(QMainWindow):
         #暂停键
         self.pause_action = QAction(self)
         p_icon = QIcon()
-        p_icon.addPixmap(QPixmap("img/pause.jpg"), QIcon.Normal, QIcon.Off)
+        p_icon.addPixmap(QPixmap("img/pause.png"), QIcon.Normal, QIcon.Off)
         self.pause_action.setIcon(p_icon)
         self.pause_action.setText("暂停")
         self.pause_action.setDisabled(True)  # 开始时该按钮不可点击
@@ -241,12 +231,13 @@ class Ui_MainWindow(QMainWindow):
         #更新数据键
         self.action_update = QAction(self)
         icon5 = QIcon()
-        icon5.addPixmap(QPixmap("img/update.jpg"), QIcon.Normal, QIcon.Off)
+        icon5.addPixmap(QPixmap("img/update.png"), QIcon.Normal, QIcon.Off)
         self.action_update.setIcon(icon5)
+        self.action_update.setText("继续更新")
         self.action_update.setDisabled(True)
         self.action_update.setShortcut('space')
         self.action_update.triggered.connect(
-            lambda: self.timer.start(flush_time))
+            lambda: self.timer.start(flush_time) and self.action_update.setDisabled(True))
 
         #帮助文档
         action_readme = QAction(self)
@@ -327,6 +318,24 @@ class Ui_MainWindow(QMainWindow):
         self.menuBar.addAction(self.menu_Statistic.menuAction())
         self.menuBar.addAction(self.menu_H.menuAction())
 
+        # self.statusBar.showMessage('实时更新的信息', 0)  # 状态栏本身显示的信息 第二个参数是信息停留的时间，单位是毫秒，默认是0（0表示在下一个操作来临前一直显示）
+        """底部状态栏
+            利用self.comNum.setText()实时更新状态栏信息
+        """
+        self.comNum = QLabel('下载速度：')
+        self.baudNum = QLabel('上传速度:')
+        self.getSpeed = QLabel('收包速度：')
+        self.sendSpeed = QLabel('发包速度：')
+        self.netNic = QLabel('Welcome to WireWhale! ^ _ ^')
+        self.statusBar.setStyleSheet("background: #EDEDED;")
+        """各个单元空间占比"""
+        self.statusBar.addPermanentWidget(self.netNic, stretch=2)
+        self.statusBar.addPermanentWidget(self.getSpeed, stretch=1)
+        self.statusBar.addPermanentWidget(self.sendSpeed, stretch=1)
+        self.statusBar.addPermanentWidget(self.comNum, stretch=1)
+        self.statusBar.addPermanentWidget(self.baudNum, stretch=1)
+
+
         QMetaObject.connectSlotsByName(self)
         self.core = Core(self)
         # 设置定时器将抓包列表置底
@@ -352,12 +361,12 @@ class Ui_MainWindow(QMainWindow):
             if reply == QMessageBox.Close:
                 self.core.stop_capture()
                 self.core.clean_out()
-                sys.exit()
+                exit()
             elif reply == QMessageBox.Save:
                 self.core.stop_capture()
                 self.on_action_savefile_clicked()
                 self.core.clean_out()
-                sys.exit()
+                exit()
         elif self.core.stop_flag is True and self.core.save_flag is False:
             """
                 已停止，但没有保存文件
@@ -371,10 +380,10 @@ class Ui_MainWindow(QMainWindow):
             elif reply == QMessageBox.Save:
                 self.on_action_savefile_clicked()
                 self.core.clean_out()
-                sys.exit()
+                exit()
             else:
                 self.core.clean_out()
-                sys.exit()
+                exit()
         elif self.core.save_flag is True or self.core.start_flag is False:
             """
                 未工作状态
@@ -383,7 +392,7 @@ class Ui_MainWindow(QMainWindow):
                                          QMessageBox.Yes | QMessageBox.No,
                                          QMessageBox.No)
             if reply == QMessageBox.Yes:
-                sys.exit()
+                exit()
             else:
                 QCloseEvent.ignore()
 
@@ -404,7 +413,8 @@ class Ui_MainWindow(QMainWindow):
         #表格停止追踪更新
         self.timer.stop()
         self.show_infoTree(selected_row)
-        self.action_update.setDisabled(False)
+        if self.core.pause_flag is False and self.core.stop_flag is False:
+            self.action_update.setDisabled(False)
 
     """
         展开帧的详细信息
@@ -432,8 +442,7 @@ class Ui_MainWindow(QMainWindow):
                 item1_1.setText(0, childList[i][j])
         self.set_hex_text(hex_dump)
 
-
-
+    #数据包背景颜色字典
     color_dict = {
         "UDP": "#daeeff",
         "HTTPS": "#e4ffc7",
@@ -448,6 +457,7 @@ class Ui_MainWindow(QMainWindow):
         "SSDP": "#ffe3e5",
         "SSDPv6": "#ffe3e5"
     }
+
     """
        表格添加行
     """
@@ -473,16 +483,15 @@ class Ui_MainWindow(QMainWindow):
        选择网卡点击事件
        显示当前选择的网卡的详细信息
     """
-
     def onActivated(self):
         title = self.choose_nicbox.currentText()
 
     """
        获取当前选择的网卡
     """
-
     def get_choose_nic(self):
         card = self.choose_nicbox.currentText()
+        self.netNic.setText('当前网卡：' + card)
         if (card == 'All'):
             a = None
         elif platform == 'Windows':
@@ -496,14 +505,12 @@ class Ui_MainWindow(QMainWindow):
     """
        设置hex区文本
     """
-
     def set_hex_text(self, text):
         self.hexBrowser.setText(text)
 
     """
         设置字体点击事件
     """
-
     def on_font_set_clicked(self):
         font, ok = QFontDialog.getFont()
         if ok:
@@ -514,7 +521,6 @@ class Ui_MainWindow(QMainWindow):
     """
         设置背景图片
     """
-
     def on_change_border_clicked(self):
         imgName, imgType = QFileDialog.getOpenFileName(
             self, "打开图片", "C:/", "*.jpg;;*.png;;All Files(*)")
@@ -525,7 +531,6 @@ class Ui_MainWindow(QMainWindow):
     """
        开始键点击事件
     """
-
     def on_start_action_clicked(self):
         if self.core.stop_flag == True:
             # 重新开始清空面板内容
@@ -550,25 +555,24 @@ class Ui_MainWindow(QMainWindow):
     """
        暂停事件点击事件
     """
-
     def on_pause_action_clicked(self):
         self.core.pause_capture()
         """
            激活开始、停止、重新开始键、过滤器、网卡选择框
         """
-        self.start_action.setDisabled(False)
+        self.start_action.setEnabled(True)
         self.stop_action.setDisabled(False)
         self.actionRestart.setDisabled(False)
         self.Filer.setDisabled(True)
         self.FilerButton.setDisabled(True)
         self.choose_nicbox.setDisabled(False)
         self.pause_action.setDisabled(True)
+        self.action_update.setDisabled(True)
         self.timer.stop()
 
     """
            菜单栏停止键点击事件
     """
-
     def on_stop_action_clicked(self):
         self.core.stop_capture()
         """
@@ -576,16 +580,19 @@ class Ui_MainWindow(QMainWindow):
         """
         self.stop_action.setDisabled(True)
         self.pause_action.setDisabled(True)
-        self.start_action.setDisabled(False)
+        self.start_action.setEnabled(True)
         self.Filer.setDisabled(False)
         self.FilerButton.setDisabled(False)
         self.choose_nicbox.setDisabled(False)
+        self.action_update.setDisabled(True)
         self.timer.stop()
+
+    def on_filerbutton_clicked(self):
+        string = self.Filer.text()
 
     """
        重新开始键响应事件
     """
-
     def on_actionRestart_clicked(self):
         # 重新开始清空面板内容
         self.timer.stop()
@@ -609,7 +616,6 @@ class Ui_MainWindow(QMainWindow):
     """
         IP地址类型统计图绘制
     """
-
     def on_IP_statistics_clicked(self):
         IP = self.core.get_network_count()
         IPv4_count = IP["ipv4"]
@@ -666,7 +672,6 @@ class Ui_MainWindow(QMainWindow):
     """
         数据包类型数量统计
     """
-
     def on_message_statistics_clicked(self):
         trans = self.core.get_transport_count()
 
@@ -702,7 +707,6 @@ class Ui_MainWindow(QMainWindow):
     """
         打开文件事件
     """
-
     def on_action_openfile_clicked(self):
         if self.core.start_flag is True or self.core.pause_flag is True:
             QMessageBox.warning(self, "警告", "请停止当前抓包！")
@@ -731,19 +735,7 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_action_exit_clicked(self, event):
-        reply = QMessageBox.question(self, 'Message', "Are you sure to quit?",
-                                     QMessageBox.Yes | QMessageBox.No,
-                                     QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            # 已停止未保存
-            if self.core.stop_flag == True and self.core.save_flag == False:
-                reply = QMessageBox.question(
-                    self, 'Message', "Do you want to save as pcap?",
-                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-                if reply == QMessageBox.Yes:
-                    self.on_action_savefile_clicked()
-            self.core.clean_out()
-            sys.exit()
+        self.closeEvent(event)
 
     """
         进度加载框
