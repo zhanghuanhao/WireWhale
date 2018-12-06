@@ -162,7 +162,6 @@ class Core():
                         protocol = ports[sport] + version_add
                     elif dport in ports:
                         protocol = ports[dport] + version_add
-
             details.append(str(self.packet_id))
             details.append(str((packet_time))[:9])
             details.append(source)
