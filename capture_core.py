@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """ 抓包核心 """
-from tempfile import NamedTemporaryFile
-import time
 import os
 import shutil
+from tempfile import NamedTemporaryFile
 from threading import Event, Thread
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from scapy.compat import raw
@@ -12,7 +11,7 @@ from scapy.layers.inet6 import *
 from scapy.layers.l2 import Ether
 from scapy.sendrecv import sniff
 from scapy.utils import *
-from get_nic import get_nic_list
+from tools import get_nic_list, get_rate
 
 platform, netcards = get_nic_list()
 flush_time = 2000
@@ -112,7 +111,7 @@ class Core():
         :parma packet: 需要处理分类的包
         """
         # 如果暂停，则不对列表进行更新操作
-        if self.pause_flag is False and packet.name == "Ethernet":
+        if not self.pause_flag and packet.name == "Ethernet":
             details = []
             packet_time = packet.time - self.start_timestamp
             #第二层
@@ -158,7 +157,7 @@ class Core():
                     self.counter["icmp"] += 1
                 else:
                     return
-                if sport is not None and dport is not None:
+                if sport and dport:
                     if sport in ports:
                         protocol = ports[sport] + version_add
                     elif dport in ports:
@@ -174,7 +173,7 @@ class Core():
             details.append(info)
             self.main_window.add_tableview_row(details)
             self.packet_id += 1
-            if writer is not None:
+            if writer:
                 writer.write(packet)
 
     def on_click_item(self, this_id):
@@ -182,9 +181,9 @@ class Core():
         处理点击列表中的项
         :parma this_id: 包对应的packet_id，在packet_list里获取该packet
         """
-        if this_id is None:
+        if not this_id or this_id < 1:
             return
-        previous_packet_time, packet = self.read_packet(this_id)
+        previous_packet_time, packet = self.read_packet(this_id - 1)
         # 详细信息列表, 用于添加进GUI
         first_return = []
         second_return = []
@@ -410,15 +409,18 @@ class Core():
             next_layer.append("Checksum: " + hex(icmp_chksum))
             next_layer.append("[Checksum status: " + "Correct]" if icmp_check
                               == icmp_chksum else "Incorrect]")
-            next_layer.append("Identifier: " + str(packet[packet_class].id) +
-                              " (" + hex(packet[packet_class].id) + ")")
-            next_layer.append("Sequence number: " +
-                              str(packet[packet_class].seq) + " (" +
-                              hex(packet[packet_class].seq) + ")")
-            data_length = len(packet.payload)
-            if data_length > 0:
-                next_layer.append("Data (" + str(data_length) + " bytes): " +
-                                  packet[packet_class].load.hex())
+            if packet_type == 0 or packet_type == 8 or protocol == "ICMP in ICMP":
+                next_layer.append("Identifier: " +
+                                  str(packet[packet_class].id) + " (" +
+                                  hex(packet[packet_class].id) + ")")
+                next_layer.append("Sequence number: " +
+                                  str(packet[packet_class].seq) + " (" +
+                                  hex(packet[packet_class].seq) + ")")
+                data_length = len(packet.payload)
+                if data_length > 0:
+                    next_layer.append("Data (" + str(data_length) +
+                                      " bytes): " +
+                                      packet[packet_class].load.hex())
         elif len(protocol) >= 6 and protocol[0:6] == "ICMPv6":
             if protocol.lower().find("option") == -1:
                 transport = "Internet Control Message Protocol v6"
@@ -632,22 +634,21 @@ class Core():
         """
         刷新下载速度、上传速度、发包速度和收包速度
         """
-        from get_rate import get_rate
-        if netcard is not None and platform == 'Windows':
+        if netcard and platform == 'Windows':
             # 反转键值对
             my_dict = dict(zip(netcards.values(), netcards.keys()))
             netcard = my_dict[netcard]
-        while stop_capturing_thread.is_set() is False:
+        while not stop_capturing_thread.is_set():
             recv_bytes, sent_bytes, recv_pak, sent_pak = get_rate(netcard)
-            self.main_window.comNum.setText('下载速度：' + recv_bytes)
-            self.main_window.baudNum.setText('上传速度：' + sent_bytes)
-            self.main_window.getSpeed.setText('收包速度：' + recv_pak)
-            self.main_window.sendSpeed.setText('发包速度：' + sent_pak)
+            if not self.pause_flag:
+                self.main_window.comNum.setText('下载速度：' + recv_bytes)
+                self.main_window.baudNum.setText('上传速度：' + sent_bytes)
+                self.main_window.getSpeed.setText('收包速度：' + recv_pak)
+                self.main_window.sendSpeed.setText('发包速度：' + sent_pak)
         self.main_window.comNum.setText('下载速度：0 B/s')
         self.main_window.baudNum.setText('上传速度：0 B/s')
         self.main_window.getSpeed.setText('收包速度：0 pak/s')
         self.main_window.sendSpeed.setText('发包速度：0 pak/s')
-            
 
     def capture_packet(self, netcard, filters):
         """
@@ -656,7 +657,7 @@ class Core():
         stop_capturing_thread.clear()
         # 第一个参数可以传入文件对象或者文件名字
         writer = PcapWriter(self.temp_file, append=True, sync=True)
-        thread = Thread(target=self.flow_count, daemon=True, args=(netcard,))
+        thread = Thread(target=self.flow_count, daemon=True, args=(netcard, ))
         thread.start()
         # 抓取数据包并将抓到的包存在列表中
         # sniff中的store=False 表示不保存在内存中，防止内存使用过高
@@ -676,11 +677,11 @@ class Core():
         :parma filters: 过滤器条件
         """
         # 如果已开始抓包，则不能进行操作
-        if self.start_flag is True:
+        if self.start_flag:
             return
         # 如果已经停止且未保存数据包，则提示是否保存数据包
-        if self.stop_flag is True:
-            if self.save_flag is False and self.packet_id > 1:
+        if self.stop_flag:
+            if not self.save_flag and self.packet_id > 1:
                 resault = QMessageBox.question(
                     None,
                     "提示",
@@ -703,7 +704,7 @@ class Core():
             self.temp_file = temp.name
             temp.close()
         # 如果从暂停开始
-        elif self.pause_flag is True:
+        elif self.pause_flag:
             # 继续显示抓到的包显示
             self.pause_flag = False
             self.start_flag = True
@@ -764,6 +765,7 @@ class Core():
             # 默认文件格式为 pcap
             filename = filename + ".pcap"
         shutil.copy(self.temp_file, filename)
+        os.chmod(filename, 0o0400 | 0o0200 | 0o0040 | 0o0004)
         QMessageBox.information(None, "提示", "保存成功！")
         self.save_flag = True
 
@@ -771,7 +773,7 @@ class Core():
         """
         打开pcap格式的文件
         """
-        if self.stop_flag is True and self.save_flag is False:
+        if self.stop_flag and not self.save_flag:
             reply = QMessageBox.question(
                 None,
                 "提示",
@@ -798,10 +800,11 @@ class Core():
             filename = filename + ".pcap"
         self.packet_id = 1
         self.main_window.info_tree.setUpdatesEnabled(False)
+        shutil.copy(filename, self.temp_file)
         sniff(
             prn=(lambda x: self.process_packet(x, None)),
             store=False,
-            offline=filename)
+            offline=self.temp_file)
         self.main_window.info_tree.setUpdatesEnabled(True)
         self.stop_flag = True
         self.save_flag = True
@@ -821,11 +824,11 @@ class Core():
         """
         获取传输层数据包的数量
         """
-        keys = ['tcp', 'udp', 'icmp', 'arp']
+        the_keys = ['tcp', 'udp', 'icmp', 'arp']
         counter_copy = self.counter.copy()
         return_dict = {}
         for key, value in counter_copy.items():
-            if key in keys:
+            if key in the_keys:
                 return_dict.update({key: value})
         return return_dict
 
@@ -833,11 +836,11 @@ class Core():
         """
         获取网络层数据包的数量
         """
-        keys = ['ipv4', 'ipv6']
+        the_keys = ['ipv4', 'ipv6']
         counter_copy = self.counter.copy()
         return_dict = {}
         for key, value in counter_copy.items():
-            if key in keys:
+            if key in the_keys:
                 return_dict.update({key: value})
         return return_dict
 
@@ -894,7 +897,7 @@ class Core():
         sec, usec, caplen, wirelen = struct.unpack(endian + "IIII",
                                                    packet_head)
         rp = f.read(caplen)[:0xFFFF]
-        if rp is None:
+        if not rp:
             f.close()
             return None
         try:

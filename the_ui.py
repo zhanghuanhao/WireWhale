@@ -7,6 +7,7 @@ from capture_core import *
 # 使用matplotlib绘制柱状图
 import numpy as np
 import matplotlib.pyplot as plt
+import json
 
 # 设置全局字体，以支持中文
 plt.rcParams['font.sans-serif'] = ['SimHei']
@@ -48,10 +49,25 @@ class Ui_MainWindow(QMainWindow):
         self.verticalLayout.setContentsMargins(10, 0, 3, 10)
         self.verticalLayout.setSpacing(6)
 
-        #初始主窗口字体
+        # 初始主窗口字体
         font = QFont()
-        font.setFamily("Comic Sans MS")
-        font.setPointSize(11)
+        with open('data.json', 'r') as file_obj:
+            '''读取json文件'''
+            old_font = json.load(file_obj)  # 返回列表数据，也支持字典
+        if old_font["font"] is not None:
+            font.setFamily(old_font["font"])
+            font.setPointSize(int(old_font["size"]))
+        else:
+            if platform == 'Windows':
+                font.setFamily("Lucida Sans Typewriter")
+                old_font["font"] = "Lucida Sans Typewriter"
+            if platform == "Linux":
+                font.setFamily("Noto Mono")
+                old_font["font"] = "Noto Mono"
+            font.setPointSize(11)
+            with open('data.json', 'w') as file_obj:
+                '''写入json文件'''
+                json.dump(old_font, file_obj)
 
         #数据包显示框
         self.info_tree = QTreeWidget(self.centralWidget)
@@ -113,8 +129,8 @@ class Ui_MainWindow(QMainWindow):
 
         #过滤器输入框
         self.Filer = QLineEdit(self.centralWidget)
-        self.Filer.setEnabled(True)
-        self.Filer.setInputMask("")
+        # self.Filer.setEnabled(True)
+        # self.Filer.setInputMask("")
         self.Filer.setPlaceholderText("Apply a capture filter … ")
         self.Filer.setStyleSheet("background:white")
         self.horizontalLayout.addWidget(self.Filer)
@@ -409,12 +425,13 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_tableview_clicked(self):
-        selected_row = self.info_tree.currentIndex().row()  #当前选择的行号
+        selected_row = self.info_tree.currentItem().text(0)  #当前选择的编号
         #表格停止追踪更新
-        self.timer.stop()
-        self.show_infoTree(selected_row)
-        if self.core.pause_flag is False and self.core.stop_flag is False:
-            self.action_update.setDisabled(False)
+        if selected_row is not None:
+            self.timer.stop()
+            self.show_infoTree((int)(selected_row))
+            if self.core.pause_flag is False and self.core.stop_flag is False:
+                self.action_update.setDisabled(False)
 
     """
         展开帧的详细信息
@@ -514,6 +531,13 @@ class Ui_MainWindow(QMainWindow):
     def on_font_set_clicked(self):
         font, ok = QFontDialog.getFont()
         if ok:
+            with open('data.json', 'r') as file_obj:
+                '''读取json文件'''
+                old_font = json.load(file_obj)  # 返回列表数据，也支持字典
+            old_font["font"] = font.family()
+            old_font["size"] = font.pointSize()
+            with open('data.json', 'w') as file:
+                json.dump(old_font, file)
             self.info_tree.setFont(font)
             self.treeWidget.setFont(font)
             self.hexBrowser.setFont(font)
@@ -524,6 +548,12 @@ class Ui_MainWindow(QMainWindow):
     def on_change_border_clicked(self):
         imgName, imgType = QFileDialog.getOpenFileName(
             self, "打开图片", "C:/", "*.jpg;;*.png;;All Files(*)")
+        with open('data.json', 'r') as file_obj:
+            '''读取json文件'''
+            old_image = json.load(file_obj)  # 返回列表数据，也支持字典
+        old_image["imageUrl"] = imgName
+        with open('data.json', 'w') as file:
+            json.dump(old_image, file)
         window_pale = QPalette()
         window_pale.setBrush(self.backgroundRole(), QBrush(QPixmap(imgName)))
         self.setPalette(window_pale)
@@ -761,11 +791,11 @@ class Ui_MainWindow(QMainWindow):
     """键盘点击事件"""
 
     def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Up or Qt.Key_Down:
+        if event.key() == Qt.Key_Up or event.key() == Qt.Key_Down:
             self.timer.stop()
             row = self.info_tree.currentIndex().row()
             self.show_infoTree(row)
             self.action_update.setDisabled(False)
-        if event.key() == Qt.Key_Space:
-            self.timer.start(flush_time)
-            self.action_update.setDisabled(True)
+        # if event.key() == Qt.Key_Space:
+        #     self.timer.start(flush_time)
+        #     self.action_update.setDisabled(True)
