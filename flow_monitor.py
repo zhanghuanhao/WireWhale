@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """ 流量监测系统 """
 from threading import Thread, Event
-from scapy.all import *
+from scapy.sendrecv import sniff
+from scapy.layers.inet import *
 import psutil
 
 
-class Moniter:
+class Monitor:
     """
     流量监测
     """
@@ -13,6 +14,11 @@ class Moniter:
     process_ports = []
     # 监测系统是否开始
     start_flag = Event()
+    window = None
+
+    def __init__(self, window):
+        self.window = window
+        self.start_flag.set()
 
     def getProcessList(self):
         """
@@ -39,14 +45,15 @@ class Moniter:
                 if process.name() == process_name and connections:
                     for con in connections:
                         if con.laddr:
-                            ports.add(con.laddr.port)
+                            ports.add(con.laddr[1])
                         if con.raddr:
-                            ports.add(con.raddr.port)
+                            ports.add(con.raddr[1])
             self.process_ports = list(ports)
-            print(self.process_ports)
             if self.process_ports:
+                pass
+                #self.window.conList.scrollToBottom()
                 # 每1秒执行一次
-                time.sleep(1)
+                #sleep(1)
             else:
                 # 进程已不存在, 停止刷新
                 self.start_flag.set()
@@ -63,8 +70,11 @@ class Moniter:
         protocol = pak.payload.payload.name
         length = len(pak)
         if sport in self.process_ports and dport in self.process_ports:
-            print("%s\t%s:%d -> %s:%d\t%d" % (protocol, src, sport, dst, dport,
-                                              length))
+            info = "%-6s%s:%d -> %s:%d%7d" % (protocol, src, sport, dst, dport,
+                                              length)
+            if protocol == 'TCP':
+                info += '%5s' % str(pak.payload.payload.flags)
+            self.window.conList.addItem(info)
 
     def capture_packet(self):
         """
@@ -74,7 +84,7 @@ class Moniter:
             store=False,
             filter="(tcp or udp) and (ip6 or ip)",
             prn=lambda x: self.getConnections(x),
-            stop_filter=self.start_flag.is_set())
+            stop_filter=lambda x: self.start_flag.is_set())
 
     def start(self, process_name):
         """
@@ -83,6 +93,7 @@ class Moniter:
         """
         # 开启刷新程序端口的线程
         self.start_flag.clear()
+        self.window.conList.clear()
         Thread(
             target=self.getPortList, daemon=True,
             args=(process_name, )).start()

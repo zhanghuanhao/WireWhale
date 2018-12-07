@@ -1,8 +1,8 @@
-from the_ui import *
+from main_ui import *
 
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
+    app = QApplication([])
     ui = Ui_MainWindow()
     ui.setupUi()
-    sys.exit(app.exec_())
+    app.exec()

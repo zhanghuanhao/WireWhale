@@ -88,7 +88,9 @@ def change_format(count):
 
 def get_rate(net_card):
     """
-    统计每秒接收到的数据大小, 输入为网卡名字
+    统计每秒接收到的数据大小
+    :parma net_card: 网卡名字
+    :return : 返回未格式化的信息
     """
     net_cards = []
     old = [0, 0, 0, 0]
@@ -112,6 +114,15 @@ def get_rate(net_card):
     info = []
     for i in range(4):
         info.append(new[i] - old[i])
+    return info
+
+
+def get_formal_rate(info):
+    """
+    获取格式化的速率
+    :parma info: 列表，包含recv_bytes, sent_bytes, recv_pak, sent_pak
+    :return :返回格式化后的信息
+    """
     recv_bytes = change_format(info[0])  # 每秒接收的字节
     sent_bytes = change_format(info[1])  # 每秒发送的字节
     recv_pak = str(info[2]) + " pak/s"  # 每秒接收的数据包

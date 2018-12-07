@@ -8,12 +8,13 @@ from capture_core import *
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+from monitor_system import start_monitor
+from multiprocessing import Process
 
 # 设置全局字体，以支持中文
 plt.rcParams['font.sans-serif'] = ['SimHei']
 # 解决‘-’表现为方块的问题
 plt.rcParams['axes.unicode_minus'] = False
-
 
 
 class Ui_MainWindow(QMainWindow):
@@ -90,7 +91,8 @@ class Ui_MainWindow(QMainWindow):
         self.info_tree.setSortingEnabled(True)
         self.info_tree.sortItems(0, Qt.AscendingOrder)
         for i in range(7):
-            self.info_tree.headerItem().setBackground(i, QBrush(QColor(Qt.white)))
+            self.info_tree.headerItem().setBackground(i,
+                                                      QBrush(QColor(Qt.white)))
         self.info_tree.setSelectionBehavior(
             QTreeWidget.SelectRows)  #设置选中时为整行选中
         self.info_tree.setSelectionMode(QTreeWidget.SingleSelection)  #设置只能选中一行
@@ -253,7 +255,8 @@ class Ui_MainWindow(QMainWindow):
         self.action_update.setDisabled(True)
         self.action_update.setShortcut('space')
         self.action_update.triggered.connect(
-            lambda: self.timer.start(flush_time) and self.action_update.setDisabled(True))
+            lambda: self.timer.start(flush_time) and self.action_update.setDisabled(True)
+        )
 
         #帮助文档
         action_readme = QAction(self)
@@ -350,7 +353,6 @@ class Ui_MainWindow(QMainWindow):
         self.statusBar.addPermanentWidget(self.sendSpeed, stretch=1)
         self.statusBar.addPermanentWidget(self.comNum, stretch=1)
         self.statusBar.addPermanentWidget(self.baudNum, stretch=1)
-
 
         QMetaObject.connectSlotsByName(self)
         self.core = Core(self)
@@ -474,10 +476,10 @@ class Ui_MainWindow(QMainWindow):
         "SSDP": "#ffe3e5",
         "SSDPv6": "#ffe3e5"
     }
-
     """
        表格添加行
     """
+
     def add_tableview_row(self, mylist):
         item = QTreeWidgetItem(self.info_tree)
         """
@@ -500,12 +502,14 @@ class Ui_MainWindow(QMainWindow):
        选择网卡点击事件
        显示当前选择的网卡的详细信息
     """
+
     def onActivated(self):
         title = self.choose_nicbox.currentText()
 
     """
        获取当前选择的网卡
     """
+
     def get_choose_nic(self):
         card = self.choose_nicbox.currentText()
         self.netNic.setText('当前网卡：' + card)
@@ -522,12 +526,14 @@ class Ui_MainWindow(QMainWindow):
     """
        设置hex区文本
     """
+
     def set_hex_text(self, text):
         self.hexBrowser.setText(text)
 
     """
         设置字体点击事件
     """
+
     def on_font_set_clicked(self):
         font, ok = QFontDialog.getFont()
         if ok:
@@ -545,6 +551,7 @@ class Ui_MainWindow(QMainWindow):
     """
         设置背景图片
     """
+
     def on_change_border_clicked(self):
         imgName, imgType = QFileDialog.getOpenFileName(
             self, "打开图片", "C:/", "*.jpg;;*.png;;All Files(*)")
@@ -561,6 +568,7 @@ class Ui_MainWindow(QMainWindow):
     """
        开始键点击事件
     """
+
     def on_start_action_clicked(self):
         if self.core.stop_flag == True:
             # 重新开始清空面板内容
@@ -585,6 +593,7 @@ class Ui_MainWindow(QMainWindow):
     """
        暂停事件点击事件
     """
+
     def on_pause_action_clicked(self):
         self.core.pause_capture()
         """
@@ -603,6 +612,7 @@ class Ui_MainWindow(QMainWindow):
     """
            菜单栏停止键点击事件
     """
+
     def on_stop_action_clicked(self):
         self.core.stop_capture()
         """
@@ -623,6 +633,7 @@ class Ui_MainWindow(QMainWindow):
     """
        重新开始键响应事件
     """
+
     def on_actionRestart_clicked(self):
         # 重新开始清空面板内容
         self.timer.stop()
@@ -646,6 +657,7 @@ class Ui_MainWindow(QMainWindow):
     """
         IP地址类型统计图绘制
     """
+
     def on_IP_statistics_clicked(self):
         IP = self.core.get_network_count()
         IPv4_count = IP["ipv4"]
@@ -702,6 +714,7 @@ class Ui_MainWindow(QMainWindow):
     """
         数据包类型数量统计
     """
+
     def on_message_statistics_clicked(self):
         trans = self.core.get_transport_count()
 
@@ -737,6 +750,7 @@ class Ui_MainWindow(QMainWindow):
     """
         打开文件事件
     """
+
     def on_action_openfile_clicked(self):
         if self.core.start_flag is True or self.core.pause_flag is True:
             QMessageBox.warning(self, "警告", "请停止当前抓包！")
@@ -758,7 +772,7 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_action_track_clicked(self):
-        QMessageBox.about(self, "About", "Track flow")
+        Process(target=start_monitor).start()
 
     """
        退出点击事件
