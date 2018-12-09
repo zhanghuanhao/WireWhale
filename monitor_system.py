@@ -16,7 +16,7 @@ plt.rcParams['axes.unicode_minus'] = False
 class Ui_Form(object):
     def setupUi(self, Form):
         Form.setWindowTitle("流量监测系统")
-        Form.resize(550, 630)
+        Form.resize(950, 630)
         self.horizontalLayoutWidget = QtWidgets.QWidget(Form)
         self.horizontalLayoutWidget.setGeometry(QtCore.QRect(10, 10, 500, 30))
         self.horizontalLayout = QtWidgets.QHBoxLayout(
@@ -43,6 +43,7 @@ class Ui_Form(object):
         self.stop_button.setText("停止监测")
         self.stop_button.clicked.connect(self.stop)
         self.horizontalLayout.addWidget(self.stop_button)
+        self.stop_button.setEnabled(False)
 
         self.update_button = QtWidgets.QPushButton(self.horizontalLayoutWidget)
         self.update_button.setText("更新列表")
@@ -51,6 +52,18 @@ class Ui_Form(object):
         self.horizontalLayout.setStretch(1, 1)
         self.horizontalLayout.setStretch(2, 1)
         self.horizontalLayout.setStretch(3, 1)
+
+        self.APPList_label = QtWidgets.QLabel(Form)
+        self.APPList_label.setText("进程连接列表")
+        self.APPList_label.setStyleSheet("font-size: 20px; font-family: 宋体")
+        self.APPList_label.setGeometry(QtCore.QRect(680, 10, 150, 30))
+        """应用树列表"""
+        self.App_Tree = QtWidgets.QTreeWidget(Form)
+        self.App_Tree.header().setVisible(False)
+        self.App_Tree.setFont(font)
+        self.App_Tree.setStyleSheet("QTreeView::item{margin:2px;}")
+        self.App_Tree.setGeometry(QtCore.QRect(560, 40, 380, 580))
+
         self.update_button.clicked.connect(self.refresh_process)
 
         self.verticalLayoutWidget = QtWidgets.QWidget(Form)
@@ -60,6 +73,7 @@ class Ui_Form(object):
 
         self.conList = QtWidgets.QListWidget(self.verticalLayoutWidget)
         self.conList.setFont(font)
+        self.conList.setStyleSheet("QListView::item{margin:2px;}")
         self.conList.setMinimumSize(421, 200)
         self.verticalLayout.addWidget(self.conList)
 
@@ -76,6 +90,22 @@ class Ui_Form(object):
         self.verticalLayout.addWidget(self.canvas)
         QtCore.QMetaObject.connectSlotsByName(Form)
         self.comboBox.addItems(self.monitor.getProcessList())
+        self.show_process_tree()
+        self.timer = QtCore.QTimer(Form)
+        self.timer.timeout.connect(self.conList.scrollToBottom)
+
+    def show_process_tree(self):
+        """
+        添加节点
+        """
+        self.App_Tree.clear()
+        process_name, process_conn = self.monitor.getProcessConnections()
+        for name in process_name:
+            item1 = QtWidgets.QTreeWidgetItem(self.App_Tree)
+            item1.setText(0, name)
+            for connections in process_conn[name]:
+                item1_1 = QtWidgets.QTreeWidgetItem(item1)
+                item1_1.setText(0, connections)
 
     def refresh_process(self):
         """
@@ -83,6 +113,7 @@ class Ui_Form(object):
         """
         self.comboBox.clear()
         self.comboBox.addItems(self.monitor.getProcessList())
+        self.show_process_tree()
 
     def setSpeed(self):
         """
@@ -100,9 +131,9 @@ class Ui_Form(object):
             if len(upload) >= 60:
                 upload.pop(0)
                 download.pop(0)
-            self.upload_plot.plot(upload, '-r', label="上传速度")
+            self.upload_plot.plot(upload, '-r', linewidth='1', label="上传速度")
             self.upload_plot.legend(loc='upper right')
-            self.upload_plot.plot(download, '-b', label="下载速度")
+            self.upload_plot.plot(download, '-b', linewidth='1', label="下载速度")
             self.upload_plot.legend(loc='upper right')
             self.canvas.draw()
 
@@ -113,6 +144,9 @@ class Ui_Form(object):
         if self.monitor.start_flag.is_set():
             self.monitor.start(self.comboBox.currentText())
             Thread(target=self.setSpeed, daemon=True).start()
+            self.timer.start(1000)
+            self.start_button.setEnabled(False)
+            self.stop_button.setEnabled(True)
 
     def stop(self):
         """
@@ -120,6 +154,9 @@ class Ui_Form(object):
         """
         if not self.monitor.start_flag.is_set():
             self.monitor.stop()
+            self.timer.stop()
+            self.start_button.setEnabled(True)
+            self.stop_button.setEnabled(False)
 
 
 def start_monitor():

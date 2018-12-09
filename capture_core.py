@@ -54,7 +54,6 @@ icmpv6_code = {
 # 端口字典
 ports = {
     80: "HTTP",
-    443: "HTTPS",
     1900: "SSDP",
     53: "DNS",
     123: "NTP",
@@ -68,6 +67,15 @@ ports = {
     161: "SNMP",
     69: "TFTP"
 }
+
+# HTTPS解析
+content_type = {
+    '14': "Change Cipher Spec",
+    '15': "Alert Message",
+    '16': "Handshake Protocol",
+    '17': "Application Data"
+}
+version = {'0': "SSLv3", '1': "TLSv1.0", '2': "TLSv1.1", '3': "TLSv1.2"}
 
 # 停止抓包的线程
 stop_capturing_thread = Event()
@@ -113,6 +121,8 @@ class Core():
         # 如果暂停，则不对列表进行更新操作
         if not self.pause_flag and packet.name == "Ethernet":
             details = []
+            if self.packet_id == 1:
+                self.start_timestamp = packet.time
             packet_time = packet.time - self.start_timestamp
             #第二层
             ether_type = packet.payload.name
@@ -158,7 +168,15 @@ class Core():
                 else:
                     return
                 if sport and dport:
-                    if sport in ports:
+                    # HTTPS
+                    if sport == 443 or dport == 443:
+                        https = packet.payload.payload.payload.__bytes__().hex(
+                        )
+                        if len(https) >= 10 and https[3] == '3':
+                            if https[0:2] in content_type and https[
+                                    5] in version:
+                                protocol = version[https[5]]
+                    elif sport in ports:
                         protocol = ports[sport] + version_add
                     elif dport in ports:
                         protocol = ports[dport] + version_add
@@ -602,8 +620,35 @@ class Core():
                     # 不识别，直接返回
                     return first_return, second_return
         # 第五层: 应用层
-        elif protocol == "SSDP":
-            pass
+        # TLS
+        else:
+            https = packet.__bytes__().hex()
+            total_length = len(https)
+            temp_length = 0
+            while len(https) >= 10:
+                if https[3] == '3' and https[0:2] in content_type and https[
+                        5] in version:
+                    protocol = version[https[5]]
+                    cont_type = content_type[https[0:2]]
+                    first_return.append("%s : %s" % (protocol, cont_type))
+                    next_layer.append("Content Type: %s (%d)" %
+                                      (cont_type, int(https[0:2], 16)))
+                    next_layer.append(
+                        "Version: %s (0x%s)" % (protocol, https[2:6]))
+                    length = int(https[6:10], 16)
+                    next_layer.append("Length: %d" % length)
+                    # 如果有数据
+                    if length > 0:
+                        this_layer_len = 10 + (length << 1)
+                        next_layer.append(
+                            "Data: %s" % https[10:this_layer_len])
+                        temp_length += this_layer_len
+                        if total_length != temp_length:
+                            https = https[this_layer_len:]
+                            second_return.append(next_layer.copy())
+                            next_layer.clear()
+                        else:
+                            break
         if next_layer:
             second_return.append(next_layer)
         first_temp, second_temp = self.get_next_layer(packet.payload)
@@ -632,7 +677,8 @@ class Core():
             my_dict = dict(zip(netcards.values(), netcards.keys()))
             netcard = my_dict[netcard]
         while not stop_capturing_thread.is_set():
-            recv_bytes, sent_bytes, recv_pak, sent_pak = get_formal_rate(get_rate(netcard))
+            recv_bytes, sent_bytes, recv_pak, sent_pak = get_formal_rate(
+                get_rate(netcard))
             if not self.pause_flag:
                 self.main_window.comNum.setText('下载速度：' + recv_bytes)
                 self.main_window.baudNum.setText('上传速度：' + sent_bytes)
@@ -703,7 +749,6 @@ class Core():
             self.start_flag = True
             return
         # 开启新线程进行抓包
-        self.start_timestamp = time.time()
         thread = Thread(
             target=self.capture_packet,
             daemon=True,
@@ -843,7 +888,6 @@ class Core():
         :parma location: 数据包位置
         :return: 返回参数列表[上一个数据包的时间，数据包]
         '''
-        start = time.time()
         # 数据包时间是否为纳秒级
         nano = False
         # 打开文件
@@ -866,7 +910,7 @@ class Core():
             nano = True
         else:
             # 不是pcap文件，弹出错误
-            
+
             f.close()
             return
         linktype = struct.unpack(endian + "I", linktype)[0]
@@ -900,7 +944,5 @@ class Core():
             p = conf.raw_layer(rp)
         p.time = sec + (0.000000001 if nano else 0.000001) * usec
         p.wirelen = wirelen
-        stop = time.time()
-        print("读取文件用时: " + str(stop - start))
         f.close()
         return previous_time, p

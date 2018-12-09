@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import json
 from monitor_system import start_monitor
+from forged_packet import startForged
 from multiprocessing import Process
 
 # 设置全局字体，以支持中文
@@ -282,8 +283,9 @@ class Ui_MainWindow(QMainWindow):
         self.action_exit.setShortcut('ctrl+Q')
         self.action_exit.setStatusTip('退出应用程序')
 
-        action = QAction(self)
-        action.setText("显示过滤器")
+        self.forged_action = QAction(self)
+        self.forged_action.setText("伪造包")
+        self.forged_action.triggered.connect(self.forged_action_clicked)
 
         #追踪流
         self.action_track = QAction(self)
@@ -324,7 +326,7 @@ class Ui_MainWindow(QMainWindow):
 
         self.menu_H.addAction(action_readme)
         self.menu_H.addAction(action_about)
-        self.menu_Analysis.addAction(action)
+        self.menu_Analysis.addAction(self.forged_action)
         self.menu_Analysis.addAction(self.action_track)
 
         self.menu_Statistic.addAction(self.IP_statistics)
@@ -466,8 +468,10 @@ class Ui_MainWindow(QMainWindow):
         "UDP": "#daeeff",
         "HTTPS": "#e4ffc7",
         "HTTP": "#e4ffc7",
-        "HTTPSv6": "#FFFFCC",
-        "HTTPv6": "#FFFFCC",
+        "SSLv3": "#FFFFCC",
+        "TLSv1.0": "#FFFFCC",
+        "TLSv1.1": "# c797ff",
+        "TLSv1.2": "#bfbdff",
         "DNS": "#CCFF99",
         "TCP": "#e7e6ff",
         "ICMPv6": "#fce0ff",
@@ -773,6 +777,9 @@ class Ui_MainWindow(QMainWindow):
 
     def on_action_track_clicked(self):
         Process(target=start_monitor).start()
+
+    def forged_action_clicked(self):
+        Process(target=startForged).start()
 
     """
        退出点击事件

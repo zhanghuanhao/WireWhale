@@ -32,14 +32,48 @@ class Monitor:
                 process_list.add(process.name())
         return list(process_list)
 
+    def getProcessConnections(self):
+        """
+        获取进程使用的网络连接
+        :return : 返回进程名字列表和进程对应的连接列表
+        """
+        process_name = set()
+        process_conn = {}
+        for process in psutil.process_iter():
+            connections = process.connections()
+            if connections:
+                process_name.add(process.name())
+                for con in connections:
+                    if con.type == 1:  # TCP
+                        protocol = 'TCP'
+                    elif con.type == 2:  # UDP
+                        protocol = 'UDP'
+                    # 本地使用的IP及端口
+                    laddr = "%s:%d" % (con.laddr[0], con.laddr[1])
+                    if con.raddr:
+                        raddr = "%s:%d" % (con.raddr[0], con.raddr[1])
+                    elif con.family.value == 2:
+                        # IPv4
+                        raddr = "0.0.0.0:0"
+                    elif con.family.value == 23:
+                        # IPv6
+                        raddr = "[::]:0"
+                    else:
+                        raddr = "*:*"
+                    info = "%s\t%s\nLocal: %s\nRemote: %s\n" % (
+                        protocol, con.status, laddr, raddr)
+                    process_conn.setdefault(process.name(), set()).add(info)
+        return list(process_name), process_conn
+
     def getPortList(self, process_name):
         """
         用于刷新某个进程的端口列表的函数
         将获得的端口列表设置到self.process_ports
         :parma process_name: 输入为程序的名字
         """
+        ports = set()
         while not self.start_flag.is_set():
-            ports = set()
+            ports.clear()
             for process in psutil.process_iter():
                 connections = process.connections()
                 if process.name() == process_name and connections:
@@ -49,14 +83,6 @@ class Monitor:
                         if con.raddr:
                             ports.add(con.raddr[1])
             self.process_ports = list(ports)
-            if self.process_ports:
-                pass
-                #self.window.conList.scrollToBottom()
-                # 每1秒执行一次
-                #sleep(1)
-            else:
-                # 进程已不存在, 停止刷新
-                self.start_flag.set()
 
     def getConnections(self, pak):
         """
