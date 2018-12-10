@@ -89,18 +89,30 @@ class Monitor:
         获取应用的连接信息
         :parma pak: 数据包
         """
-        src = pak.payload.src
-        dst = pak.payload.dst
-        sport = pak.payload.payload.sport
-        dport = pak.payload.payload.dport
-        protocol = pak.payload.payload.name
-        length = len(pak)
-        if sport in self.process_ports and dport in self.process_ports:
-            info = "%-6s%s:%d -> %s:%d%7d" % (protocol, src, sport, dst, dport,
-                                              length)
-            if protocol == 'TCP':
-                info += '%5s' % str(pak.payload.payload.flags)
-            self.window.conList.addItem(info)
+        try:
+            src = pak.payload.src
+            dst = pak.payload.dst
+            protocol = pak.payload.payload.name
+            if protocol != 'ICMP':
+                sport = pak.payload.payload.sport
+                dport = pak.payload.payload.dport
+                length = len(pak)
+                if sport in self.process_ports and dport in self.process_ports:
+                    info = "%-6s%s:%d -> %s:%d%7d" % (protocol, src, sport, dst, dport,
+                                                    length)
+                    if protocol == 'TCP':
+                        info += '%5s' % str(pak.payload.payload.flags)
+                    self.window.conList.addItem(info)
+            else:
+                # 判断ICMP包是否为攻击报文
+                if src == dst:
+                    # 相同源地址和目的地址，可能为Land攻击
+                    self.window.alert("数据包源地址与目的地址相同, 疑为Land攻击!")
+                elif len(pak.payload) > 65535:
+                    # IP数据包的最大长度大于64KB(即65535B), 疑为Ping of Death攻击
+                    self.window.alert("收到IP数据包长度大于64KB, 疑为Ping拒绝服务攻击!")
+        except AttributeError:
+            pass
 
     def capture_packet(self):
         """
@@ -108,7 +120,7 @@ class Monitor:
         """
         sniff(
             store=False,
-            filter="(tcp or udp) and (ip6 or ip)",
+            filter="(tcp or udp) and (ip6 or ip) and icmp",
             prn=lambda x: self.getConnections(x),
             stop_filter=lambda x: self.start_flag.is_set())
 

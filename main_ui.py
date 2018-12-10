@@ -11,6 +11,8 @@ import json
 from monitor_system import start_monitor
 from forged_packet import startForged
 from multiprocessing import Process
+from threading import Thread
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 # 设置全局字体，以支持中文
 plt.rcParams['font.sans-serif'] = ['SimHei']
@@ -19,9 +21,11 @@ plt.rcParams['axes.unicode_minus'] = False
 
 
 class Ui_MainWindow(QMainWindow):
-    #核心
+
     core = None
     timer = None
+    Monitor = None
+    Forged = None
 
     def setupUi(self):
         self.setWindowTitle("WireWhale")
@@ -132,10 +136,9 @@ class Ui_MainWindow(QMainWindow):
 
         #过滤器输入框
         self.Filer = QLineEdit(self.centralWidget)
-        # self.Filer.setEnabled(True)
-        # self.Filer.setInputMask("")
         self.Filer.setPlaceholderText("Apply a capture filter … ")
         self.Filer.setStyleSheet("background:white")
+        self.Filer.setFont(font)
         self.horizontalLayout.addWidget(self.Filer)
 
         #过滤器按钮
@@ -218,6 +221,7 @@ class Ui_MainWindow(QMainWindow):
         icon2.addPixmap(QPixmap("img/start.png"), QIcon.Normal, QIcon.Off)
         self.start_action.setIcon(icon2)
         self.start_action.setText("开始")
+        self.start_action.setShortcut('F1')
         self.start_action.triggered.connect(self.on_start_action_clicked)
 
         #停止键
@@ -226,6 +230,7 @@ class Ui_MainWindow(QMainWindow):
         icon3.addPixmap(QPixmap("img/stop.png"), QIcon.Normal, QIcon.Off)
         self.stop_action.setIcon(icon3)
         self.stop_action.setText("停止")
+        self.stop_action.setShortcut('F3')
         self.stop_action.setDisabled(True)  #开始时该按钮不可点击
         self.stop_action.triggered.connect(self.on_stop_action_clicked)
 
@@ -235,6 +240,7 @@ class Ui_MainWindow(QMainWindow):
         p_icon.addPixmap(QPixmap("img/pause.png"), QIcon.Normal, QIcon.Off)
         self.pause_action.setIcon(p_icon)
         self.pause_action.setText("暂停")
+        self.pause_action.setShortcut('F2')
         self.pause_action.setDisabled(True)  # 开始时该按钮不可点击
         self.pause_action.triggered.connect(self.on_pause_action_clicked)
 
@@ -244,6 +250,7 @@ class Ui_MainWindow(QMainWindow):
         icon4.addPixmap(QPixmap("img/restart.png"), QIcon.Normal, QIcon.Off)
         self.actionRestart.setIcon(icon4)
         self.actionRestart.setText("重新开始")
+        self.actionRestart.setShortcut('F4')
         self.actionRestart.setDisabled(True)  # 开始时该按钮不可点击
         self.actionRestart.triggered.connect(self.on_actionRestart_clicked)
 
@@ -253,8 +260,8 @@ class Ui_MainWindow(QMainWindow):
         icon5.addPixmap(QPixmap("img/update.png"), QIcon.Normal, QIcon.Off)
         self.action_update.setIcon(icon5)
         self.action_update.setText("继续更新")
+        self.action_update.setShortcut('F5')
         self.action_update.setDisabled(True)
-        self.action_update.setShortcut('space')
         self.action_update.triggered.connect(
             lambda: self.timer.start(flush_time) and self.action_update.setDisabled(True)
         )
@@ -268,11 +275,13 @@ class Ui_MainWindow(QMainWindow):
         #打开文件键
         action_openfile = QAction(self)
         action_openfile.setText("打开")
+        action_openfile.setShortcut("ctrl+O")
         action_openfile.triggered.connect(self.on_action_openfile_clicked)
 
         #保存文件键
         action_savefile = QAction(self)
         action_savefile.setText("保存")
+        action_savefile.setShortcut("ctrl+S")
         action_savefile.triggered.connect(self.on_action_savefile_clicked)
 
         #退出键
@@ -283,13 +292,16 @@ class Ui_MainWindow(QMainWindow):
         self.action_exit.setShortcut('ctrl+Q')
         self.action_exit.setStatusTip('退出应用程序')
 
+        #构造包
         self.forged_action = QAction(self)
         self.forged_action.setText("伪造包")
+        self.forged_action.setShortcut('F7')
         self.forged_action.triggered.connect(self.forged_action_clicked)
 
-        #追踪流
+        #流量监测
         self.action_track = QAction(self)
-        self.action_track.setText("追踪流")
+        self.action_track.setText("流量监测")
+        self.action_track.setShortcut('F6')
         self.action_track.triggered.connect(self.on_action_track_clicked)
 
         #IP地址类型统计图
@@ -314,6 +326,7 @@ class Ui_MainWindow(QMainWindow):
         self.menu_F.addAction(action_openfile)
         self.menu_F.addAction(action_savefile)
         self.menu_F.addAction(self.action_exit)
+        self.menu_F.showFullScreen()
 
         self.edit_menu.addAction(font_set)
         self.edit_menu.addAction(change_border)
@@ -326,6 +339,7 @@ class Ui_MainWindow(QMainWindow):
 
         self.menu_H.addAction(action_readme)
         self.menu_H.addAction(action_about)
+
         self.menu_Analysis.addAction(self.forged_action)
         self.menu_Analysis.addAction(self.action_track)
 
@@ -368,10 +382,15 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def closeEvent(self, QCloseEvent):
+        def close_to_do():
+            self.core.clean_out()
+            if self.Monitor and self.Monitor.is_alive():
+                self.Monitor.terminate()
+            if self.Forged and self.Forged.is_alive():
+                self.Forged.terminate()
+            exit()
         if self.core.start_flag is True or self.core.pause_flag is True:
-            """
-                没有停止抓包
-            """
+            # 没有停止抓包
             reply = QMessageBox.question(
                 self, 'Message', "您是否要停止捕获，并保存已捕获的分组?\n警告：若不保存，您捕获的分组将会丢失",
                 QMessageBox.Save | QMessageBox.Close | QMessageBox.Cancel,
@@ -380,13 +399,11 @@ class Ui_MainWindow(QMainWindow):
                 QCloseEvent.ignore()
             if reply == QMessageBox.Close:
                 self.core.stop_capture()
-                self.core.clean_out()
-                exit()
+                close_to_do()
             elif reply == QMessageBox.Save:
                 self.core.stop_capture()
                 self.on_action_savefile_clicked()
-                self.core.clean_out()
-                exit()
+                close_to_do()
         elif self.core.stop_flag is True and self.core.save_flag is False:
             """
                 已停止，但没有保存文件
@@ -399,11 +416,9 @@ class Ui_MainWindow(QMainWindow):
                 QCloseEvent.ignore()
             elif reply == QMessageBox.Save:
                 self.on_action_savefile_clicked()
-                self.core.clean_out()
-                exit()
+                close_to_do()
             else:
-                self.core.clean_out()
-                exit()
+                close_to_do()
         elif self.core.save_flag is True or self.core.start_flag is False:
             """
                 未工作状态
@@ -412,7 +427,7 @@ class Ui_MainWindow(QMainWindow):
                                          QMessageBox.Yes | QMessageBox.No,
                                          QMessageBox.No)
             if reply == QMessageBox.Yes:
-                exit()
+                close_to_do()
             else:
                 QCloseEvent.ignore()
 
@@ -501,14 +516,6 @@ class Ui_MainWindow(QMainWindow):
         if color is not None:
             for i in range(7):
                 item.setBackground(i, QBrush(QColor(color)))
-
-    """
-       选择网卡点击事件
-       显示当前选择的网卡的详细信息
-    """
-
-    def onActivated(self):
-        title = self.choose_nicbox.currentText()
 
     """
        获取当前选择的网卡
@@ -661,7 +668,6 @@ class Ui_MainWindow(QMainWindow):
     """
         IP地址类型统计图绘制
     """
-
     def on_IP_statistics_clicked(self):
         IP = self.core.get_network_count()
         IPv4_count = IP["ipv4"]
@@ -712,7 +718,6 @@ class Ui_MainWindow(QMainWindow):
             # 给每一个bar分配颜色
             for bar, color in zip(bars, colors):
                 bar.set_color(color)
-            # plt.savefig('bar.jpg')
             plt.show()
 
     """
@@ -776,10 +781,15 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_action_track_clicked(self):
-        Process(target=start_monitor).start()
+        if not self.Monitor or not self.Monitor.is_alive():
+            self.Monitor = Process(target=start_monitor)
+            self.Monitor.start()
 
+    ''
     def forged_action_clicked(self):
-        Process(target=startForged).start()
+        if not self.Forged or not self.Forged.is_alive():
+            self.Forged = Process(target=startForged)
+            self.Forged.start()
 
     """
        退出点击事件
@@ -817,6 +827,6 @@ class Ui_MainWindow(QMainWindow):
             row = self.info_tree.currentIndex().row()
             self.show_infoTree(row)
             self.action_update.setDisabled(False)
-        # if event.key() == Qt.Key_Space:
-        #     self.timer.start(flush_time)
-        #     self.action_update.setDisabled(True)
+        if event.key() == Qt.Key_F5:
+            self.timer.start(flush_time)
+            self.action_update.setDisabled(True)

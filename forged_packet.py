@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from scapy.sendrecv import srloop
+from scapy.sendrecv import sr, sr1, srloop
+import scapy
 from scapy.layers.inet import *
 import sys
 import threading
 
 
+"""获取控制台内容"""
 class EmittingStream(QtCore.QObject):
     textWritten = QtCore.pyqtSignal(str)  # 定义一个发送str的信号
 
@@ -28,6 +30,7 @@ class Ui_Form(object):
         self.forged_packet = None
         Form.setWindowTitle("伪造数据包")
         Form.resize(600, 380)
+        Form.setFixedSize(Form.width(), Form.height())
         self.horizontalLayoutWidget = QtWidgets.QWidget(Form)
         self.horizontalLayoutWidget.setGeometry(QtCore.QRect(0, 0, 600, 380))
         self.horizontalLayout = QtWidgets.QHBoxLayout(
@@ -40,7 +43,6 @@ class Ui_Form(object):
         self.treeWidget.setGeometry(QtCore.QRect(0, 0, 148, 379))
         self.treeWidget.setMidLineWidth(0)
         self.treeWidget.setSortingEnabled(False)
-        self.treeWidget.expandAll()
         self.treeWidget.clicked.connect(self.treeWidget_onclicked)
 
         font = QtGui.QFont()
@@ -80,6 +82,7 @@ class Ui_Form(object):
         item_0 = QtWidgets.QTreeWidgetItem(self.treeWidget)
         item_0.setText(0, "发收包详情")
         item_0.setFont(0, font11)
+        self.treeWidget.expandAll()
         self.treeWidget.header().setVisible(False)
         self.horizontalLayout.addWidget(self.left)
         self.right = QtWidgets.QFrame(self.horizontalLayoutWidget)
@@ -329,6 +332,7 @@ class Ui_Form(object):
         self.TCP_send.clicked.connect(self.TCP_send_clicked)
         self.TCP_send.setGeometry(QtCore.QRect(150, 290, 75, 23))
         self.stackedWidget.addWidget(self.TCP_page)
+
         """ICMP协议页面"""
         self.ICMP_page = QtWidgets.QWidget()
         self.label_29 = QtWidgets.QLabel(self.ICMP_page)
@@ -427,6 +431,7 @@ class Ui_Form(object):
         self.UDP_send.clicked.connect(self.UDP_send_click)
         self.UDP_send.setGeometry(QtCore.QRect(170, 310, 75, 23))
         self.stackedWidget.addWidget(self.UDP_page)
+
         """ARP协议页面"""
         self.ARP_page = QtWidgets.QWidget()
         self.label_35 = QtWidgets.QLabel(self.ARP_page)
@@ -513,18 +518,27 @@ class Ui_Form(object):
         self.horizontalLayout.addWidget(self.right)
         self.horizontalLayout.setStretch(0, 1)
         self.horizontalLayout.setStretch(1, 3)
+
         """确认页面"""
         self.page = QtWidgets.QWidget()
         self.packet_browser = QtWidgets.QTextBrowser(self.page)
         self.packet_browser.setFont(font)
-        self.packet_browser.setGeometry(QtCore.QRect(60, 70, 351, 211))
+        self.packet_browser.setGeometry(QtCore.QRect(60, 80, 351, 211))
 
         self.label_45 = QtWidgets.QLabel(self.page)
-        self.label_45.setGeometry(QtCore.QRect(100, 40, 111, 21))
-        self.label_45.setText("您已构造的包：")
-        self.label_46 = QtWidgets.QLabel(self.page)
-        self.label_46.setGeometry(QtCore.QRect(100, 290, 101, 16))
-        self.label_46.setText("是否确认发送？")
+        self.label_45.setGeometry(QtCore.QRect(60, 20, 300, 21))
+        self.label_45.setText("您已构造的包如下，请选择发包方式并且是否确认发送：")
+
+        """选择发送方式"""
+        self.choose_way = QtWidgets.QComboBox(self.page)
+        self.choose_way.setFont(font)
+        self.choose_way.setGeometry(QtCore.QRect(60, 45, 200, 23))
+        self.choose_way.addItem("在第三层发送，无接收")
+        self.choose_way.addItem("在第二层发送，无接收")
+        self.choose_way.addItem("在第三层发送，有接收")
+        self.choose_way.addItem("在第三层发送，只接收第一个")
+        self.choose_way.addItem("在第三层工作")
+
         self.send_button = QtWidgets.QPushButton(self.page)
         self.send_button.setGeometry(QtCore.QRect(100, 320, 75, 23))
         self.send_button.setText("发送")
@@ -547,6 +561,7 @@ class Ui_Form(object):
         self.stackedWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(Form)
 
+    #页面索引
     protcol_index = {
         "Ether": 0,
         "IP": 1,
@@ -560,6 +575,7 @@ class Ui_Form(object):
         "发送": 6,
         "发收包详情": 7
     }
+
     flag = 0
 
     def treeWidget_onclicked(self):
@@ -567,6 +583,7 @@ class Ui_Form(object):
         now_index = self.protcol_index[choose]
         self.stackedWidget.setCurrentIndex(now_index)
 
+    """构造Ether包"""
     def EtherNext_onclicked(self):
         NextProtocal = self.EtherType.currentText()
         if "IP" in NextProtocal:
@@ -577,6 +594,7 @@ class Ui_Form(object):
             src=self.EtherSrcEdit.text(), dst=self.EtherDstEdit.text())
         self.flag = 1
 
+    """构造IP包"""
     def IP_Next_button_clicked(self):
         choose = self.IP_proto.currentText()
         self.stackedWidget.setCurrentIndex(self.protcol_index[choose])
@@ -596,6 +614,7 @@ class Ui_Form(object):
             self.forged_packet = temp
             self.flag = 1
 
+    """构造TCP包"""
     def TCP_send_clicked(self):
         self.stackedWidget.setCurrentIndex(6)
         temp = TCP(
@@ -614,6 +633,7 @@ class Ui_Form(object):
             flag = 1
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
+    """构造ICMP包"""
     def ICMP_send_button_clicked(self):
         self.stackedWidget.setCurrentIndex(6)
         temp = ICMP(
@@ -629,6 +649,7 @@ class Ui_Form(object):
             flag = 1
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
+    """构造UDP包"""
     def UDP_send_click(self):
         self.stackedWidget.setCurrentIndex(6)
         temp = UDP(
@@ -643,6 +664,7 @@ class Ui_Form(object):
             flag = 1
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
+    """构造ARP包"""
     def ARP_send_click(self):
         self.stackedWidget.setCurrentIndex(6)
         temp = ARP(
@@ -662,21 +684,33 @@ class Ui_Form(object):
             flag = 1
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
+    """发送包"""
     def send_button_click(self):
         if self.flag == 1:
-            # sendp(self.forged_packet)
             self.stackedWidget.setCurrentIndex(7)
+            self.output_browser.clear()
             self.flag = 0
-            t1 = threading.Thread(target=self.send)
+            t1 = threading.Thread(target=self.send_packet)
             t1.start()
-            # send(self.forged_packet)
         else:
             QtWidgets.QMessageBox.warning(self.Form, "警告", "您还没有构造数据包！")
             return
 
-    def send(self):
-        # srloop(packet)
-        srloop(self.forged_packet)
+    """发包方式"""
+    def send_packet(self):
+        choose_way = self.choose_way.currentIndex()
+        if choose_way == 0:
+            send(self.forged_packet)
+        elif choose_way == 1:
+            sendp(self.forged_packet)
+        elif choose_way == 2:
+            sr(self.forged_packet)
+        elif choose_way == 2:
+            sr1(self.forged_packet)
+        elif choose_way == 3:
+            srloop(self.forged_packet)
+
+
 
     def cancel_button_click(self):
         exit()

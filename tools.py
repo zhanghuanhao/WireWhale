@@ -128,3 +128,15 @@ def get_formal_rate(info):
     recv_pak = str(info[2]) + " pak/s"  # 每秒接收的数据包
     sent_pak = str(info[3]) + " pak/s"  # 每秒发送的数据包
     return recv_bytes, sent_bytes, recv_pak, sent_pak
+
+def time_to_formal(time_stamp):
+    """
+    将时间戳转换为标准的时间字符串
+    如： 2018-10-21 20:27:53.123456
+    :parma time_stamp: 时间戳，ms为单位
+    """
+    delta_ms = str(time_stamp - int(time_stamp))
+    time_temp = time.localtime(time_stamp)
+    my_time = time.strftime("%Y-%m-%d %H:%M:%S", time_temp)
+    my_time += delta_ms[1:8]
+    return my_time

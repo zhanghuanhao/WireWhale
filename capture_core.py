@@ -11,7 +11,7 @@ from scapy.layers.inet6 import *
 from scapy.layers.l2 import Ether
 from scapy.sendrecv import sniff
 from scapy.utils import *
-from tools import get_nic_list, get_rate, get_formal_rate
+from tools import *
 
 platform, netcards = get_nic_list()
 flush_time = 2000
@@ -217,7 +217,7 @@ class Core():
         first_return.append(frame)
         # 抓包的时间
         first_layer.append(
-            "Arrival Time: %s" % self.time_to_formal(packet.time))
+            "Arrival Time: %s" % time_to_formal(packet.time))
         first_layer.append("Epoch Time: %f seconds" % packet.time)
         delta_time = packet.time - previous_packet_time
         first_layer.append(
@@ -245,428 +245,424 @@ class Core():
         first_return = []
         second_return = []
         next_layer = []
-        protocol = packet.name
-        packet_class = packet.__class__
-        if protocol == "NoPayload":
-            return first_return, second_return
-        elif protocol == "Ethernet":
-            ether_src = packet[packet_class].src
-            ether_dst = packet[packet_class].dst
-            if ether_dst == "ff:ff:ff:ff:ff:ff":
-                ether_dst = "Broadcast (ff:ff:ff:ff:ff:ff)"
-            ethernet = "Ethernet, Src: %s, Dst: %s" % (ether_src, ether_dst)
-            first_return.append(ethernet)
-            next_layer.append("Source: %s" % ether_src)
-            next_layer.append("Destination: %s" % ether_dst)
-            ether_type = packet.payload.name
-            if ether_type == "IP":
-                ether_type += "v4"
-            ether_proto = (
-                "Type: %s (%s)" % (ether_type, hex(packet[packet_class].type)))
-            next_layer.append(ether_proto)
-        # 第三层: 网络层
-        # IPv4
-        elif protocol == "IP" or protocol == "IP in ICMP":
-            protocol += "v4"
-            ip_src = packet[packet_class].src
-            ip_dst = packet[packet_class].dst
-            network = "Internet Protocol Version 4, Src: %s, Dst: %s" % (
-                ip_src, ip_dst)
-            first_return.append(network)
-            next_layer.append("Version: %d" % packet[packet_class].version)
-            next_layer.append(
-                "Header Length: %d bytes (%d)" %
-                (packet[packet_class].ihl << 2, packet[packet_class].ihl))
-            next_layer.append("Differentiated Services Field: %s" % hex(
-                packet[packet_class].tos))
-            next_layer.append("Total Length: %d" % packet[packet_class].len)
-            next_layer.append("Identification: %s (%d)" % (hex(
-                packet[packet_class].id), packet[packet_class].id))
-            next_layer.append(
-                "Flags: %d (%s)" % (packet[packet_class].flags,
-                                    hex(packet[packet_class].flags.value)))
-            next_layer.append(
-                "Fragment offset: %d" % packet[packet_class].frag)
-            next_layer.append("Time to live: %d" % packet[packet_class].ttl)
-            next_protocol = packet.payload.name
-            if next_protocol == "IP":
-                next_protocol += "v4"
-            next_layer.append("Protocol: %s (%d)" %
-                              (next_protocol, packet[packet_class].proto))
-            ip_chksum = packet[packet_class].chksum
-            ip_check = packet_class(raw(packet[packet_class])).chksum
-            next_layer.append("Header checksum: %s" % hex(ip_chksum))
-            next_layer.append("[Header checksum status: " + "Correct]"
-                              if ip_check == ip_chksum else "Incorrect]")
-            next_layer.append("Source: %s" % ip_src)
-            next_layer.append("Destination: %s" % ip_dst)
-        # IPv6
-        elif protocol == "IPv6" or protocol == "IPv6 in ICMPv6":
-            ipv6_src = packet[packet_class].src
-            ipv6_dst = packet[packet_class].dst
-            network = ("Internet Protocol Version 6, Src: %s, Dst: %s" %
-                       (ipv6_src, ipv6_dst))
-            first_return.append(network)
-            next_layer.append("Version: %d" % packet[packet_class].version)
-            next_layer.append(
-                "Traffice Class: %s" % hex(packet[packet_class].tc))
-            next_layer.append("Flow Label: %s" % hex(packet[packet_class].fl))
-            next_layer.append("Payload Length: %d" % packet[packet_class].plen)
-            next_protocol = packet.payload.name
-            if next_protocol == "IP":
-                next_protocol += "v4"
-            next_layer.append("Next Header: %s (%d)" %
-                              (next_protocol, packet[packet_class].nh))
-            next_layer.append("Hop Limit: %d" % packet[packet_class].hlim)
-            next_layer.append("Source: %s" % ipv6_src)
-            next_layer.append("Destination: %s" % ipv6_dst)
-        elif protocol == "ARP":
-            arp_op = packet[packet_class].op
-            network = "Address Resolution Protocol "
-            if arp_op in arp_dict:
-                network += "(%s)" % arp_dict[arp_op]
-            first_return.append(network)
-            next_layer.append(
-                "Hardware type: %d" % packet[packet_class].hwtype)
-            ptype = packet[packet_class].ptype
-            temp_str = "Protocol type: %s" % hex(packet[packet_class].ptype)
-            if ptype == 0x0800:
-                temp_str += " (IPv4)"
-            elif ptype == 0x86DD:
-                temp_str += " (IPv6)"
-            next_layer.append(temp_str)
-            next_layer.append("Hardware size: %d" % packet[packet_class].hwlen)
-            next_layer.append("Protocol size: %d" % packet[packet_class].plen)
-            temp_str = "Opcode: %d" % arp_op
-            if arp_op in arp_dict:
-                temp_str += " (%s)" % arp_dict[arp_op]
-            next_layer.append(temp_str)
-            next_layer.append(
-                "Sender MAC address: %s" % packet[packet_class].hwsrc)
-            next_layer.append(
-                "Sender IP address: %s" % packet[packet_class].psrc)
-            next_layer.append(
-                "Target MAC address: %s" % packet[packet_class].hwdst)
-            next_layer.append(
-                "Target IP address: %s" % packet[packet_class].pdst)
-        # 第四层: 传输层
-        elif protocol == "TCP" or protocol == "TCP in ICMP":
-            src_port = packet[packet_class].sport
-            dst_port = packet[packet_class].dport
-            transport = (
-                "Transmission Control Protocol, Src Port: %d, Dst Port: %d" %
-                (src_port, dst_port))
-            first_return.append(transport)
-            next_layer.append("Source Port: %d" % src_port)
-            next_layer.append("Destination Port: %d" % dst_port)
-            next_layer.append("Sequence number: %d" % packet[packet_class].seq)
-            next_layer.append(
-                "Acknowledgment number: %d" % packet[packet_class].ack)
-            tcp_head_length = packet[packet_class].dataofs
-            next_layer.append("Header Length: %d bytes (%d)" %
-                              (tcp_head_length << 2, tcp_head_length))
-            next_layer.append("Flags: %s (%d)" % (hex(
-                packet[packet_class].flags.value), packet[packet_class].flags))
-            next_layer.append(
-                "Window size value: %d" % packet[packet_class].window)
-            tcp_chksum = packet[packet_class].chksum
-            tcp_check = packet_class(raw(packet[packet_class])).chksum
-            next_layer.append("Checksum: %s" % hex(tcp_chksum))
-            next_layer.append("[Checksum status: " + "Correct]" if tcp_check ==
-                              tcp_chksum else "Incorrect]")
-            next_layer.append(
-                "Urgent pointer: %d" % packet[packet_class].urgptr)
-            options = packet[packet_class].options
-            options_length = len(options) << 2
-            if options_length > 0:
-                string = "Options: (%d bytes)" % options_length
-                for item in options:
-                    string += ", %s: %s" % (item[0], str(item[1]))
-                next_layer.append(string)
-            payload_length = len(packet.payload)
-            if payload_length > 0:
-                next_layer.append("TCP payload: %d bytes" % payload_length)
-        elif protocol == "UDP" or protocol == "UDP in ICMP":
-            src_port = packet[packet_class].sport
-            dst_port = packet[packet_class].dport
-            transport = ("User Datagram Protocol, Src Port: %d, Dst Port: %d" %
-                         (src_port, dst_port))
-            first_return.append(transport)
-            next_layer.append("Source Port: %d" % src_port)
-            next_layer.append("Destination Port: %d" % dst_port)
-            next_layer.append("Length: %d" % packet[packet_class].len)
-            udp_chksum = packet[packet_class].chksum
-            udp_check = packet_class(raw(packet[packet_class])).chksum
-            next_layer.append("Chksum: %s" % hex(udp_chksum))
-            next_layer.append("[Checksum status: " + "Correct]" if udp_check ==
-                              udp_chksum else "Incorrect]")
-        elif protocol == "ICMP" or protocol == "ICMP in ICMP":
-            transport = "Internet Control Message Protocol"
-            first_return.append(transport)
-            packet_type = packet[packet_class].type
-            temp_str = "Type: %d" % packet_type
-            if packet_type in icmptypes:
-                temp_str += " (%s)" % icmptypes[packet_type]
-            next_layer.append(temp_str)
-            packet_code = packet[packet_class].code
-            temp_str = "Code: %d" % packet_code
-            if packet_type in icmpcodes:
-                if packet_code in icmpcodes[packet_type]:
-                    temp_str += " (%s)" % icmpcodes[packet_type][packet_code]
-            next_layer.append(temp_str)
-            icmp_chksum = packet[packet_class].chksum
-            icmp_check = packet_class(raw(packet[packet_class])).chksum
-            next_layer.append("Checksum: %s" % hex(icmp_chksum))
-            next_layer.append("[Checksum status: " + "Correct]" if icmp_check
-                              == icmp_chksum else "Incorrect]")
-            if packet_type == 0 or packet_type == 8 or protocol == "ICMP in ICMP":
+        try:
+            protocol = packet.name
+            packet_class = packet.__class__
+            if protocol == "NoPayload":
+                return first_return, second_return
+            elif protocol == "Ethernet":
+                ether_src = packet[packet_class].src
+                ether_dst = packet[packet_class].dst
+                if ether_dst == "ff:ff:ff:ff:ff:ff":
+                    ether_dst = "Broadcast (ff:ff:ff:ff:ff:ff)"
+                ethernet = "Ethernet, Src: %s, Dst: %s" % (ether_src, ether_dst)
+                first_return.append(ethernet)
+                next_layer.append("Source: %s" % ether_src)
+                next_layer.append("Destination: %s" % ether_dst)
+                ether_type = packet.payload.name
+                if ether_type == "IP":
+                    ether_type += "v4"
+                ether_proto = (
+                    "Type: %s (%s)" % (ether_type, hex(packet[packet_class].type)))
+                next_layer.append(ether_proto)
+            # 第三层: 网络层
+            # IPv4
+            elif protocol == "IP" or protocol == "IP in ICMP":
+                protocol += "v4"
+                ip_src = packet[packet_class].src
+                ip_dst = packet[packet_class].dst
+                network = "Internet Protocol Version 4, Src: %s, Dst: %s" % (
+                    ip_src, ip_dst)
+                first_return.append(network)
+                next_layer.append("Version: %d" % packet[packet_class].version)
                 next_layer.append(
-                    "Identifier: %d (%s)" % (packet[packet_class].id,
-                                             hex(packet[packet_class].id)))
+                    "Header Length: %d bytes (%d)" %
+                    (packet[packet_class].ihl << 2, packet[packet_class].ihl))
+                next_layer.append("Differentiated Services Field: %s" % hex(
+                    packet[packet_class].tos))
+                next_layer.append("Total Length: %d" % packet[packet_class].len)
+                next_layer.append("Identification: %s (%d)" % (hex(
+                    packet[packet_class].id), packet[packet_class].id))
                 next_layer.append(
-                    "Sequence number: %d (%s)" %
-                    (packet[packet_class].seq, hex(packet[packet_class].seq)))
-                data_length = len(packet.payload)
-                if data_length > 0:
-                    next_layer.append(
-                        "Data (%d bytes): %s" %
-                        (data_length, packet[packet_class].load.hex()))
-        elif len(protocol) >= 6 and protocol[0:6] == "ICMPv6":
-            if protocol.lower().find("option") == -1:
-                transport = "Internet Control Message Protocol v6"
+                    "Flags: %d (%s)" % (packet[packet_class].flags,
+                                        hex(packet[packet_class].flags.value)))
+                next_layer.append(
+                    "Fragment offset: %d" % packet[packet_class].frag)
+                next_layer.append("Time to live: %d" % packet[packet_class].ttl)
+                next_protocol = packet.payload.name
+                if next_protocol == "IP":
+                    next_protocol += "v4"
+                next_layer.append("Protocol: %s (%d)" %
+                                (next_protocol, packet[packet_class].proto))
+                ip_chksum = packet[packet_class].chksum
+                ip_check = packet_class(raw(packet[packet_class])).chksum
+                next_layer.append("Header checksum: %s" % hex(ip_chksum))
+                next_layer.append("[Header checksum status: " + "Correct]"
+                                if ip_check == ip_chksum else "Incorrect]")
+                next_layer.append("Source: %s" % ip_src)
+                next_layer.append("Destination: %s" % ip_dst)
+            # IPv6
+            elif protocol == "IPv6" or protocol == "IPv6 in ICMPv6":
+                ipv6_src = packet[packet_class].src
+                ipv6_dst = packet[packet_class].dst
+                network = ("Internet Protocol Version 6, Src: %s, Dst: %s" %
+                        (ipv6_src, ipv6_dst))
+                first_return.append(network)
+                next_layer.append("Version: %d" % packet[packet_class].version)
+                next_layer.append(
+                    "Traffice Class: %s" % hex(packet[packet_class].tc))
+                next_layer.append("Flow Label: %s" % hex(packet[packet_class].fl))
+                next_layer.append("Payload Length: %d" % packet[packet_class].plen)
+                next_protocol = packet.payload.name
+                if next_protocol == "IP":
+                    next_protocol += "v4"
+                next_layer.append("Next Header: %s (%d)" %
+                                (next_protocol, packet[packet_class].nh))
+                next_layer.append("Hop Limit: %d" % packet[packet_class].hlim)
+                next_layer.append("Source: %s" % ipv6_src)
+                next_layer.append("Destination: %s" % ipv6_dst)
+            elif protocol == "ARP":
+                arp_op = packet[packet_class].op
+                network = "Address Resolution Protocol "
+                if arp_op in arp_dict:
+                    network += "(%s)" % arp_dict[arp_op]
+                first_return.append(network)
+                next_layer.append(
+                    "Hardware type: %d" % packet[packet_class].hwtype)
+                ptype = packet[packet_class].ptype
+                temp_str = "Protocol type: %s" % hex(packet[packet_class].ptype)
+                if ptype == 0x0800:
+                    temp_str += " (IPv4)"
+                elif ptype == 0x86DD:
+                    temp_str += " (IPv6)"
+                next_layer.append(temp_str)
+                next_layer.append("Hardware size: %d" % packet[packet_class].hwlen)
+                next_layer.append("Protocol size: %d" % packet[packet_class].plen)
+                temp_str = "Opcode: %d" % arp_op
+                if arp_op in arp_dict:
+                    temp_str += " (%s)" % arp_dict[arp_op]
+                next_layer.append(temp_str)
+                next_layer.append(
+                    "Sender MAC address: %s" % packet[packet_class].hwsrc)
+                next_layer.append(
+                    "Sender IP address: %s" % packet[packet_class].psrc)
+                next_layer.append(
+                    "Target MAC address: %s" % packet[packet_class].hwdst)
+                next_layer.append(
+                    "Target IP address: %s" % packet[packet_class].pdst)
+            # 第四层: 传输层
+            elif protocol == "TCP" or protocol == "TCP in ICMP":
+                src_port = packet[packet_class].sport
+                dst_port = packet[packet_class].dport
+                transport = (
+                    "Transmission Control Protocol, Src Port: %d, Dst Port: %d" %
+                    (src_port, dst_port))
                 first_return.append(transport)
-                proto_type = packet[packet_class].type
-                temp_str = "Type: %d" % proto_type
-                if proto_type in icmp6types:
-                    temp_str += " (%s)" % icmp6types[proto_type]
+                next_layer.append("Source Port: %d" % src_port)
+                next_layer.append("Destination Port: %d" % dst_port)
+                next_layer.append("Sequence number: %d" % packet[packet_class].seq)
+                next_layer.append(
+                    "Acknowledgment number: %d" % packet[packet_class].ack)
+                tcp_head_length = packet[packet_class].dataofs
+                next_layer.append("Header Length: %d bytes (%d)" %
+                                (tcp_head_length << 2, tcp_head_length))
+                next_layer.append("Flags: %s (%d)" % (hex(
+                    packet[packet_class].flags.value), packet[packet_class].flags))
+                next_layer.append(
+                    "Window size value: %d" % packet[packet_class].window)
+                tcp_chksum = packet[packet_class].chksum
+                tcp_check = packet_class(raw(packet[packet_class])).chksum
+                next_layer.append("Checksum: %s" % hex(tcp_chksum))
+                next_layer.append("[Checksum status: " + "Correct]" if tcp_check ==
+                                tcp_chksum else "Incorrect]")
+                next_layer.append(
+                    "Urgent pointer: %d" % packet[packet_class].urgptr)
+                options = packet[packet_class].options
+                options_length = len(options) << 2
+                if options_length > 0:
+                    string = "Options: (%d bytes)" % options_length
+                    for item in options:
+                        string += ", %s: %s" % (item[0], str(item[1]))
+                    next_layer.append(string)
+                payload_length = len(packet.payload)
+                if payload_length > 0:
+                    next_layer.append("TCP payload: %d bytes" % payload_length)
+            elif protocol == "UDP" or protocol == "UDP in ICMP":
+                src_port = packet[packet_class].sport
+                dst_port = packet[packet_class].dport
+                transport = ("User Datagram Protocol, Src Port: %d, Dst Port: %d" %
+                            (src_port, dst_port))
+                first_return.append(transport)
+                next_layer.append("Source Port: %d" % src_port)
+                next_layer.append("Destination Port: %d" % dst_port)
+                next_layer.append("Length: %d" % packet[packet_class].len)
+                udp_chksum = packet[packet_class].chksum
+                udp_check = packet_class(raw(packet[packet_class])).chksum
+                next_layer.append("Chksum: %s" % hex(udp_chksum))
+                next_layer.append("[Checksum status: " + "Correct]" if udp_check ==
+                                udp_chksum else "Incorrect]")
+            elif protocol == "ICMP" or protocol == "ICMP in ICMP":
+                transport = "Internet Control Message Protocol"
+                first_return.append(transport)
+                packet_type = packet[packet_class].type
+                temp_str = "Type: %d" % packet_type
+                if packet_type in icmptypes:
+                    temp_str += " (%s)" % icmptypes[packet_type]
                 next_layer.append(temp_str)
                 packet_code = packet[packet_class].code
                 temp_str = "Code: %d" % packet_code
-                if proto_type in icmpv6_code:
-                    if packet_code in icmpv6_code[proto_type]:
-                        temp_str += " (%s)" % icmpv6_code[proto_type][
-                            packet_code]
+                if packet_type in icmpcodes:
+                    if packet_code in icmpcodes[packet_type]:
+                        temp_str += " (%s)" % icmpcodes[packet_type][packet_code]
                 next_layer.append(temp_str)
-                icmpv6_cksum = packet[packet_class].cksum
-                icmpv6_check = packet_class(raw(packet[packet_class])).cksum
-                next_layer.append("Checksum: %s" % hex(icmpv6_cksum))
-                next_layer.append("[Checksum status: " +
-                                  "Correct]" if icmpv6_check ==
-                                  icmpv6_cksum else "Incorrect]")
-                if proto_type == "Echo Request" or proto_type == "Echo Reply":
+                icmp_chksum = packet[packet_class].chksum
+                icmp_check = packet_class(raw(packet[packet_class])).chksum
+                next_layer.append("Checksum: %s" % hex(icmp_chksum))
+                next_layer.append("[Checksum status: " + "Correct]" if icmp_check
+                                == icmp_chksum else "Incorrect]")
+                if packet_type == 0 or packet_type == 8 or protocol == "ICMP in ICMP":
                     next_layer.append(
                         "Identifier: %d (%s)" % (packet[packet_class].id,
-                                                 hex(packet[packet_class].id)))
-                    next_layer.append("Sequence number: %d (%s)" %
-                                      (packet[packet_class].seq,
-                                       hex(packet[packet_class].seq)))
-                    data_length = packet[packet_class].plen - 8
+                                                hex(packet[packet_class].id)))
+                    next_layer.append(
+                        "Sequence number: %d (%s)" %
+                        (packet[packet_class].seq, hex(packet[packet_class].seq)))
+                    data_length = len(packet.payload)
                     if data_length > 0:
                         next_layer.append(
                             "Data (%d bytes): %s" %
                             (data_length, packet[packet_class].load.hex()))
-                elif proto_type == "Neighbor Advertisement":
-                    temp_set = "Set (1)"
-                    temp_not_set = "Not set (0)"
-                    temp_str = "Router: "
-                    if packet[packet_class].R == 1:
-                        temp_str += temp_set
-                    else:
-                        temp_str += temp_not_set
-                    next_layer.append(temp_str)
-                    temp_str = "Solicited: "
-                    if packet[packet_class].S == 1:
-                        temp_str += temp_set
-                    else:
-                        temp_str += temp_not_set
-                    next_layer.append(temp_str)
-                    temp_str = "Override: "
-                    if packet[packet_class].O == 1:
-                        temp_str += temp_set
-                    else:
-                        temp_str += temp_not_set
-                    next_layer.append(temp_str)
-                    next_layer.append(
-                        "Reserved: %d" % packet[packet_class].res)
-                    next_layer.append(
-                        "Target Address: %s" % packet[packet_class].tgt)
-                elif proto_type == "Neighbor Solicitation":
-                    next_layer.append(
-                        "Reserved: %d" % packet[packet_class].res)
-                    next_layer.append(
-                        "Target Address: %s" % packet[packet_class].tgt)
-                elif proto_type == "Router Solicitation":
-                    next_layer.append(
-                        "Reserved: %d" % packet[packet_class].res)
-                elif proto_type == "Router Advertisement":
-                    temp_set = "Set (1)"
-                    temp_not_set = "Not set (0)"
-                    next_layer.append(
-                        "Cur hop limit: %d" % packet[packet_class].chlim)
-                    temp_str = "Managed address configuration: "
-                    if packet[packet_class].M == 1:
-                        temp_str += temp_set
-                    else:
-                        temp_str += temp_not_set
-                    next_layer.append(temp_str)
-                    temp_str = "Other configuration: "
-                    if packet[packet_class].O == 1:
-                        temp_str += temp_set
-                    else:
-                        temp_str += temp_not_set
-                    next_layer.append(temp_str)
-                    temp_str = "Home Agent: "
-                    if packet[packet_class].H == 1:
-                        temp_str += temp_set
-                    else:
-                        temp_str += temp_not_set
-                    next_layer.append(temp_str)
-                    temp_str = "Preference: %d" % packet[packet_class].prf
-                    next_layer.append(temp_str)
-                    temp_str = "Proxy: "
-                    if packet[packet_class].P == 1:
-                        temp_str += temp_set
-                    else:
-                        temp_str += temp_not_set
-                    next_layer.append(temp_str)
-                    next_layer.append(
-                        "Reserved: %d" % packet[packet_class].res)
-                    next_layer.append("Router lifetime (s): %d" %
-                                      packet[packet_class].routerlifetime)
-                    next_layer.append("Reachable time (ms): %d" %
-                                      packet[packet_class].reachabletime)
-                    next_layer.append("Retrans timer (ms): %d" %
-                                      packet[packet_class].retranstimer)
-                elif proto_type == "Destination Unreachable":
-                    next_layer.append(
-                        "Length: %d (%s)" % (packet[packet_class].length,
-                                             hex(packet[packet_class].length)))
-                    next_layer.append(
-                        "Unused: %d" % packet[packet_class].unused)
-                elif proto_type == "Packet too big":
-                    next_layer.append("MTU: %d" % packet[packet_class].mtu)
-                elif proto_type == "Parameter problem":
-                    next_layer.append("PTR: %d" % packet[packet_class].ptr)
-                elif proto_type == "Time exceeded":
-                    next_layer.append(
-                        "Length: %d (%s)" % (packet[packet_class].length,
-                                             hex(packet[packet_class].length)))
-                    next_layer.append(
-                        "Unused: %d" % packet[packet_class].unused)
-            else:
-                # ICMPv6 Option
-                transport = "ICMPv6 Option ("
-                proto_type = packet[packet_class].type
-                # Source Link-Layer or Destination Link-Layer
-                if proto_type == 1 or proto_type == 2:
-                    address = packet[packet_class].lladdr
-                    if proto_type == 1:
-                        transport += "Source Link-Layer Address: %s)" % address
-                        proto_type = "Type: Source Link-Layer Address (1)"
-                    else:
-                        transport += "Destination Link-Layer Address: %s)" % address
-                        proto_type = "Type: Destination Link-Layer Address (2)"
+            elif len(protocol) >= 6 and protocol[0:6] == "ICMPv6":
+                if protocol.lower().find("option") == -1:
+                    transport = "Internet Control Message Protocol v6"
                     first_return.append(transport)
-                    next_layer.append(proto_type)
-                    length = packet[packet_class].len
-                    next_layer.append(
-                        "Length: %d (%d bytes)" % (length, length << 3))
-                    next_layer.append("Link-Layer Address: %s" % address)
-                # Prefix Information
-                elif proto_type == 3:
-                    packet_prefix = packet[packet_class].prefix
-                    transport += "Prefix Information: %s)" % packet_prefix
-                    proto_type = "Type: Prefix Information (3)"
-                    first_return.append(transport)
-                    next_layer.append(proto_type)
-                    length = packet[packet_class].len
-                    next_layer.append(
-                        "Length: %d (%d bytes)" % (length, length << 3))
-                    next_layer.append(
-                        "Prefix Length: %d" % packet[packet_class].prefixlen)
-                    set_str = "Set (1)"
-                    not_set_str = "Not set (0)"
-                    next_layer.append("On-link flag (L): %s" %
-                                      set_str if packet[packet_class].L ==
-                                      1 else not_set_str)
-                    next_layer.append(
-                        "Autonomous address-configuration flag (A): %s" %
-                        set_str if packet[packet_class].A ==
-                        1 else not_set_str)
-                    next_layer.append("Router address flag(R): %s" %
-                                      set_str if packet[packet_class].R ==
-                                      1 else not_set_str)
-                    next_layer.append("Valid Lifetime: %d" %
-                                      packet[packet_class].validlifetime)
-                    next_layer.append("Preferred Lifetime: %d" %
-                                      packet[packet_class].preferredlifetime)
-                    next_layer.append(
-                        "Reserverd: %d" % packet[packet_class].res2)
-                    next_layer.append("Prefix: %s" % packet_prefix)
-                # MTU
-                elif proto_type == 5:
-                    packet_mtu = packet[packet_class].mtu
-                    transport += "MTU: %d)" % packet_mtu
-                    proto_type = "Type: MTU (5)"
-                    first_return.append(transport)
-                    next_layer.append(proto_type)
-                    length = packet[packet_class].len
-                    next_layer.append(
-                        "Length: %d (%d bytes)" % (length, length << 3))
-                    next_layer.append(
-                        "Reserverd: %d" % packet[packet_class].res)
-                    next_layer.append("MTU: %d" % packet_mtu)
-                else:
-                    # 不识别，直接返回
-                    return first_return, second_return
-        # 第五层: 应用层
-        # TLS
-        else:
-            https = packet.__bytes__().hex()
-            total_length = len(https)
-            temp_length = 0
-            while len(https) >= 10:
-                if https[3] == '3' and https[0:2] in content_type and https[
-                        5] in version:
-                    protocol = version[https[5]]
-                    cont_type = content_type[https[0:2]]
-                    first_return.append("%s : %s" % (protocol, cont_type))
-                    next_layer.append("Content Type: %s (%d)" %
-                                      (cont_type, int(https[0:2], 16)))
-                    next_layer.append(
-                        "Version: %s (0x%s)" % (protocol, https[2:6]))
-                    length = int(https[6:10], 16)
-                    next_layer.append("Length: %d" % length)
-                    # 如果有数据
-                    if length > 0:
-                        this_layer_len = 10 + (length << 1)
+                    proto_type = packet[packet_class].type
+                    temp_str = "Type: %d" % proto_type
+                    if proto_type in icmp6types:
+                        temp_str += " (%s)" % icmp6types[proto_type]
+                    next_layer.append(temp_str)
+                    packet_code = packet[packet_class].code
+                    temp_str = "Code: %d" % packet_code
+                    if proto_type in icmpv6_code:
+                        if packet_code in icmpv6_code[proto_type]:
+                            temp_str += " (%s)" % icmpv6_code[proto_type][
+                                packet_code]
+                    next_layer.append(temp_str)
+                    icmpv6_cksum = packet[packet_class].cksum
+                    icmpv6_check = packet_class(raw(packet[packet_class])).cksum
+                    next_layer.append("Checksum: %s" % hex(icmpv6_cksum))
+                    next_layer.append("[Checksum status: " +
+                                    "Correct]" if icmpv6_check ==
+                                    icmpv6_cksum else "Incorrect]")
+                    if proto_type == "Echo Request" or proto_type == "Echo Reply":
                         next_layer.append(
-                            "Data: %s" % https[10:this_layer_len])
-                        temp_length += this_layer_len
-                        if total_length != temp_length:
-                            https = https[this_layer_len:]
-                            second_return.append(next_layer.copy())
-                            next_layer.clear()
+                            "Identifier: %d (%s)" % (packet[packet_class].id,
+                                                    hex(packet[packet_class].id)))
+                        next_layer.append("Sequence number: %d (%s)" %
+                                        (packet[packet_class].seq,
+                                        hex(packet[packet_class].seq)))
+                        data_length = packet[packet_class].plen - 8
+                        if data_length > 0:
+                            next_layer.append(
+                                "Data (%d bytes): %s" %
+                                (data_length, packet[packet_class].load.hex()))
+                    elif proto_type == "Neighbor Advertisement":
+                        temp_set = "Set (1)"
+                        temp_not_set = "Not set (0)"
+                        temp_str = "Router: "
+                        if packet[packet_class].R == 1:
+                            temp_str += temp_set
                         else:
-                            break
-        if next_layer:
-            second_return.append(next_layer)
-        first_temp, second_temp = self.get_next_layer(packet.payload)
-        first_return += first_temp
-        second_return += second_temp
+                            temp_str += temp_not_set
+                        next_layer.append(temp_str)
+                        temp_str = "Solicited: "
+                        if packet[packet_class].S == 1:
+                            temp_str += temp_set
+                        else:
+                            temp_str += temp_not_set
+                        next_layer.append(temp_str)
+                        temp_str = "Override: "
+                        if packet[packet_class].O == 1:
+                            temp_str += temp_set
+                        else:
+                            temp_str += temp_not_set
+                        next_layer.append(temp_str)
+                        next_layer.append(
+                            "Reserved: %d" % packet[packet_class].res)
+                        next_layer.append(
+                            "Target Address: %s" % packet[packet_class].tgt)
+                    elif proto_type == "Neighbor Solicitation":
+                        next_layer.append(
+                            "Reserved: %d" % packet[packet_class].res)
+                        next_layer.append(
+                            "Target Address: %s" % packet[packet_class].tgt)
+                    elif proto_type == "Router Solicitation":
+                        next_layer.append(
+                            "Reserved: %d" % packet[packet_class].res)
+                    elif proto_type == "Router Advertisement":
+                        temp_set = "Set (1)"
+                        temp_not_set = "Not set (0)"
+                        next_layer.append(
+                            "Cur hop limit: %d" % packet[packet_class].chlim)
+                        temp_str = "Managed address configuration: "
+                        if packet[packet_class].M == 1:
+                            temp_str += temp_set
+                        else:
+                            temp_str += temp_not_set
+                        next_layer.append(temp_str)
+                        temp_str = "Other configuration: "
+                        if packet[packet_class].O == 1:
+                            temp_str += temp_set
+                        else:
+                            temp_str += temp_not_set
+                        next_layer.append(temp_str)
+                        temp_str = "Home Agent: "
+                        if packet[packet_class].H == 1:
+                            temp_str += temp_set
+                        else:
+                            temp_str += temp_not_set
+                        next_layer.append(temp_str)
+                        temp_str = "Preference: %d" % packet[packet_class].prf
+                        next_layer.append(temp_str)
+                        temp_str = "Proxy: "
+                        if packet[packet_class].P == 1:
+                            temp_str += temp_set
+                        else:
+                            temp_str += temp_not_set
+                        next_layer.append(temp_str)
+                        next_layer.append(
+                            "Reserved: %d" % packet[packet_class].res)
+                        next_layer.append("Router lifetime (s): %d" %
+                                        packet[packet_class].routerlifetime)
+                        next_layer.append("Reachable time (ms): %d" %
+                                        packet[packet_class].reachabletime)
+                        next_layer.append("Retrans timer (ms): %d" %
+                                        packet[packet_class].retranstimer)
+                    elif proto_type == "Destination Unreachable":
+                        next_layer.append(
+                            "Length: %d (%s)" % (packet[packet_class].length,
+                                                hex(packet[packet_class].length)))
+                        next_layer.append(
+                            "Unused: %d" % packet[packet_class].unused)
+                    elif proto_type == "Packet too big":
+                        next_layer.append("MTU: %d" % packet[packet_class].mtu)
+                    elif proto_type == "Parameter problem":
+                        next_layer.append("PTR: %d" % packet[packet_class].ptr)
+                    elif proto_type == "Time exceeded":
+                        next_layer.append(
+                            "Length: %d (%s)" % (packet[packet_class].length,
+                                                hex(packet[packet_class].length)))
+                        next_layer.append(
+                            "Unused: %d" % packet[packet_class].unused)
+                else:
+                    # ICMPv6 Option
+                    transport = "ICMPv6 Option ("
+                    proto_type = packet[packet_class].type
+                    # Source Link-Layer or Destination Link-Layer
+                    if proto_type == 1 or proto_type == 2:
+                        address = packet[packet_class].lladdr
+                        if proto_type == 1:
+                            transport += "Source Link-Layer Address: %s)" % address
+                            proto_type = "Type: Source Link-Layer Address (1)"
+                        else:
+                            transport += "Destination Link-Layer Address: %s)" % address
+                            proto_type = "Type: Destination Link-Layer Address (2)"
+                        first_return.append(transport)
+                        next_layer.append(proto_type)
+                        length = packet[packet_class].len
+                        next_layer.append(
+                            "Length: %d (%d bytes)" % (length, length << 3))
+                        next_layer.append("Link-Layer Address: %s" % address)
+                    # Prefix Information
+                    elif proto_type == 3:
+                        packet_prefix = packet[packet_class].prefix
+                        transport += "Prefix Information: %s)" % packet_prefix
+                        proto_type = "Type: Prefix Information (3)"
+                        first_return.append(transport)
+                        next_layer.append(proto_type)
+                        length = packet[packet_class].len
+                        next_layer.append(
+                            "Length: %d (%d bytes)" % (length, length << 3))
+                        next_layer.append(
+                            "Prefix Length: %d" % packet[packet_class].prefixlen)
+                        set_str = "Set (1)"
+                        not_set_str = "Not set (0)"
+                        next_layer.append("On-link flag (L): %s" %
+                                        set_str if packet[packet_class].L ==
+                                        1 else not_set_str)
+                        next_layer.append(
+                            "Autonomous address-configuration flag (A): %s" %
+                            set_str if packet[packet_class].A ==
+                            1 else not_set_str)
+                        next_layer.append("Router address flag(R): %s" %
+                                        set_str if packet[packet_class].R ==
+                                        1 else not_set_str)
+                        next_layer.append("Valid Lifetime: %d" %
+                                        packet[packet_class].validlifetime)
+                        next_layer.append("Preferred Lifetime: %d" %
+                                        packet[packet_class].preferredlifetime)
+                        next_layer.append(
+                            "Reserverd: %d" % packet[packet_class].res2)
+                        next_layer.append("Prefix: %s" % packet_prefix)
+                    # MTU
+                    elif proto_type == 5:
+                        packet_mtu = packet[packet_class].mtu
+                        transport += "MTU: %d)" % packet_mtu
+                        proto_type = "Type: MTU (5)"
+                        first_return.append(transport)
+                        next_layer.append(proto_type)
+                        length = packet[packet_class].len
+                        next_layer.append(
+                            "Length: %d (%d bytes)" % (length, length << 3))
+                        next_layer.append(
+                            "Reserverd: %d" % packet[packet_class].res)
+                        next_layer.append("MTU: %d" % packet_mtu)
+                    else:
+                        # 不识别，直接返回
+                        return first_return, second_return
+            # 第五层: 应用层
+            # TLS
+            else:
+                https = packet.__bytes__().hex()
+                total_length = len(https)
+                temp_length = 0
+                while len(https) >= 10:
+                    if https[3] == '3' and https[0:2] in content_type and https[
+                            5] in version:
+                        protocol = version[https[5]]
+                        cont_type = content_type[https[0:2]]
+                        first_return.append("%s : %s" % (protocol, cont_type))
+                        next_layer.append("Content Type: %s (%d)" %
+                                        (cont_type, int(https[0:2], 16)))
+                        next_layer.append(
+                            "Version: %s (0x%s)" % (protocol, https[2:6]))
+                        length = int(https[6:10], 16)
+                        next_layer.append("Length: %d" % length)
+                        # 如果有数据
+                        if length > 0:
+                            this_layer_len = 10 + (length << 1)
+                            next_layer.append(
+                                "Data: %s" % https[10:this_layer_len])
+                            temp_length += this_layer_len
+                            if total_length != temp_length:
+                                https = https[this_layer_len:]
+                                second_return.append(next_layer.copy())
+                                next_layer.clear()
+                            else:
+                                break
+                    else:
+                        break
+            if next_layer:
+                second_return.append(next_layer)
+            first_temp, second_temp = self.get_next_layer(packet.payload)
+            first_return += first_temp
+            second_return += second_temp
+        except AttributeError:
+            # 未知数据包
+            first_return.clear()
+            second_return.clear()
+            pass
         return first_return, second_return
-
-    def time_to_formal(self, time_stamp):
-        """
-        将时间戳转换为标准的时间字符串
-        如： 2018-10-21 20:27:53.123456
-        :parma time_stamp: 时间戳，ms为单位
-        """
-        delta_ms = str(time_stamp - int(time_stamp))
-        time_temp = time.localtime(time_stamp)
-        my_time = time.strftime("%Y-%m-%d %H:%M:%S", time_temp)
-        my_time += delta_ms[1:8]
-        return my_time
 
     def flow_count(self, netcard=None):
         """
