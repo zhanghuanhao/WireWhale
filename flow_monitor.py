@@ -82,7 +82,13 @@ class Monitor:
                             ports.add(con.laddr[1])
                         if con.raddr:
                             ports.add(con.raddr[1])
-            self.process_ports = list(ports)
+            if ports:
+                self.process_ports = list(ports)
+            else:
+                # 进程已不存在
+                self.window.stop()
+                self.window.refresh_process()
+                self.window.alert("进程%s已停止运行!" % process_name)
 
     def getConnections(self, pak):
         """
@@ -92,26 +98,29 @@ class Monitor:
         try:
             src = pak.payload.src
             dst = pak.payload.dst
-            protocol = pak.payload.payload.name
-            if protocol != 'ICMP':
-                sport = pak.payload.payload.sport
-                dport = pak.payload.payload.dport
-                length = len(pak)
-                if sport in self.process_ports and dport in self.process_ports:
-                    info = "%-6s%s:%d -> %s:%d%7d" % (protocol, src, sport, dst, dport,
-                                                    length)
-                    if protocol == 'TCP':
-                        info += '%5s' % str(pak.payload.payload.flags)
-                    self.window.conList.addItem(info)
+            length = len(pak)
+            if src == dst:
+                # 相同源地址和目的地址，可能为Land攻击
+                self.window.alert("数据包源地址与目的地址相同, 疑为Land攻击!")
+            elif len(pak.payload) > 65535:
+                # IP数据包的最大长度大于64KB(即65535B), 若大于, 则疑为Ping of Death攻击
+                self.window.alert("收到IP数据包长度大于64KB, 疑为Ping拒绝服务攻击!")
             else:
-                # 判断ICMP包是否为攻击报文
-                if src == dst:
-                    # 相同源地址和目的地址，可能为Land攻击
-                    self.window.alert("数据包源地址与目的地址相同, 疑为Land攻击!")
-                elif len(pak.payload) > 65535:
-                    # IP数据包的最大长度大于64KB(即65535B), 疑为Ping of Death攻击
-                    self.window.alert("收到IP数据包长度大于64KB, 疑为Ping拒绝服务攻击!")
-        except AttributeError:
+                protocol = pak.payload.payload.name
+                if protocol != 'ICMP':
+                    sport = pak.payload.payload.sport
+                    dport = pak.payload.payload.dport
+                    if sport in self.process_ports and dport in self.process_ports:
+                        info = "%-7s%s:%d -> %s:%d%7d" % (protocol, src, sport,
+                                                          dst, dport, length)
+                        if protocol == 'TCP':
+                            info += '%5s' % str(pak.payload.payload.flags)
+                        self.window.conList.addItem(info)
+                else:
+                    # ICMP报文
+                    self.window.conList.addItem(
+                        "%-7s%s -> %s%7d" % (protocol, src, dst, length))
+        except:
             pass
 
     def capture_packet(self):
@@ -120,7 +129,7 @@ class Monitor:
         """
         sniff(
             store=False,
-            filter="(tcp or udp) and (ip6 or ip) and icmp",
+            filter="(tcp or udp or icmp) and (ip6 or ip)",
             prn=lambda x: self.getConnections(x),
             stop_filter=lambda x: self.start_flag.is_set())
 

@@ -830,3 +830,11 @@ class Ui_MainWindow(QMainWindow):
         if event.key() == Qt.Key_F5:
             self.timer.start(flush_time)
             self.action_update.setDisabled(True)
+
+
+
+def start():
+    app = QApplication([])
+    ui = Ui_MainWindow()
+    ui.setupUi()
+    app.exec()

@@ -120,6 +120,10 @@ class Ui_Form(object):
         self.EtherType.addItem("IPv4: 0x0800")
         self.EtherType.addItem("ARP:0x0806")
         self.EtherType.setGeometry(QtCore.QRect(140, 210, 161, 21))
+
+        self.Ether_load = QtWidgets.QLineEdit(self.Ether_page)
+        self.Ether_load.setPlaceholderText("请输入Ether协议载荷")
+        self.Ether_load.setGeometry(QtCore.QRect(90, 250, 250, 21))
         """Ether转下一步按钮"""
         self.EtherNext = QtWidgets.QPushButton(self.Ether_page)
         self.EtherNext.setGeometry(QtCore.QRect(230, 300, 75, 23))
@@ -236,15 +240,19 @@ class Ui_Form(object):
         self.IP_dst = QtWidgets.QLineEdit(self.IP_page)
         self.IP_dst.setGeometry(QtCore.QRect(300, 260, 131, 20))
         self.IP_dst.setText(init_IP.dst)
+
+        self.IP_load = QtWidgets.QLineEdit(self.IP_page)
+        self.IP_load.setPlaceholderText("请输入IP协议载荷")
+        self.IP_load.setGeometry(QtCore.QRect(90, 295, 250, 20))
         """IP下一步按钮"""
         self.IP_Next_button = QtWidgets.QPushButton(self.IP_page)
         self.IP_Next_button.setText("下一步")
-        self.IP_Next_button.setGeometry(QtCore.QRect(150, 310, 75, 23))
+        self.IP_Next_button.setGeometry(QtCore.QRect(150, 320, 75, 23))
         self.IP_Next_button.clicked.connect(self.IP_Next_button_clicked)
         """IP跳过按钮"""
         self.IP_skip_button = QtWidgets.QPushButton(self.IP_page)
         self.IP_skip_button.setText("跳过")
-        self.IP_skip_button.setGeometry(QtCore.QRect(300, 310, 75, 23))
+        self.IP_skip_button.setGeometry(QtCore.QRect(300, 320, 75, 23))
         self.IP_skip_button.clicked.connect(
             lambda: self.treeWidget.setCurrentIndex(2))
 
@@ -324,13 +332,16 @@ class Ui_Form(object):
         self.TCP_urgptr = QtWidgets.QComboBox(self.TCP_page)
         self.TCP_urgptr.addItem('0')
         self.TCP_urgptr.addItem('1')
-
         self.TCP_urgptr.setGeometry(QtCore.QRect(290, 220, 113, 20))
+
+        self.TCP_load = QtWidgets.QLineEdit(self.TCP_page)
+        self.TCP_load.setPlaceholderText("请输入TCP协议载荷")
+        self.TCP_load.setGeometry(QtCore.QRect(90, 270, 250, 16))
 
         self.TCP_send = QtWidgets.QPushButton(self.TCP_page)
         self.TCP_send.setText("确认")
         self.TCP_send.clicked.connect(self.TCP_send_clicked)
-        self.TCP_send.setGeometry(QtCore.QRect(150, 290, 75, 23))
+        self.TCP_send.setGeometry(QtCore.QRect(150, 320, 75, 23))
         self.stackedWidget.addWidget(self.TCP_page)
 
         """ICMP协议页面"""
@@ -383,11 +394,17 @@ class Ui_Form(object):
         self.ICMP_seq.setGeometry(QtCore.QRect(140, 270, 113, 20))
         self.ICMP_seq.setText(str(init_ICMP.seq))
 
+        self.ICMP_load = QtWidgets.QLineEdit(self.ICMP_page)
+        self.ICMP_load.setPlaceholderText("请输入ICMP协议载荷")
+        self.ICMP_load.setGeometry(QtCore.QRect(90, 305, 250, 20))
+
         self.ICMP_send_button = QtWidgets.QPushButton(self.ICMP_page)
         self.ICMP_send_button.setText("发送")
         self.ICMP_send_button.clicked.connect(self.ICMP_send_button_clicked)
-        self.ICMP_send_button.setGeometry(QtCore.QRect(150, 320, 75, 23))
+        self.ICMP_send_button.setGeometry(QtCore.QRect(150, 335, 75, 23))
         self.stackedWidget.addWidget(self.ICMP_page)
+
+
         """UDP协议页面"""
         self.UDP_page = QtWidgets.QWidget()
         self.label_24 = QtWidgets.QLabel(self.UDP_page)
@@ -426,10 +443,14 @@ class Ui_Form(object):
         self.UDP_chksum.setText(init_UDP.chksum)
         self.UDP_chksum.setGeometry(QtCore.QRect(160, 260, 121, 20))
 
+        self.UDP_load = QtWidgets.QLineEdit(self.UDP_page)
+        self.UDP_load.setPlaceholderText("请输入UDP协议载荷")
+        self.UDP_load.setGeometry(QtCore.QRect(80, 300, 260, 20))
+
         self.UDP_send = QtWidgets.QPushButton(self.UDP_page)
         self.UDP_send.setText("发送")
         self.UDP_send.clicked.connect(self.UDP_send_click)
-        self.UDP_send.setGeometry(QtCore.QRect(170, 310, 75, 23))
+        self.UDP_send.setGeometry(QtCore.QRect(170, 325, 75, 23))
         self.stackedWidget.addWidget(self.UDP_page)
 
         """ARP协议页面"""
@@ -510,6 +531,11 @@ class Ui_Form(object):
         self.ARP_pdst = QtWidgets.QLineEdit(self.ARP_page)
         self.ARP_pdst.setText(init_ARP.pdst)
         self.ARP_pdst.setGeometry(QtCore.QRect(110, 260, 113, 20))
+
+        self.ARP_load = QtWidgets.QLineEdit(self.ARP_page)
+        self.ARP_load.setPlaceholderText("请输入ARP协议载荷")
+        self.ARP_load.setGeometry(QtCore.QRect(80, 295, 260, 20))
+
         self.ARP_send = QtWidgets.QPushButton(self.ARP_page)
         self.ARP_send.setText("发送")
         self.ARP_send.clicked.connect(self.ARP_send_click)
@@ -592,6 +618,8 @@ class Ui_Form(object):
             self.stackedWidget.setCurrentIndex(5)
         self.forged_packet = Ether(
             src=self.EtherSrcEdit.text(), dst=self.EtherDstEdit.text())
+        if self.Ether_load.text() is not "":
+            self.forged_packet = self.forged_packet/self.Ether_load.text()
         self.flag = 1
 
     """构造IP包"""
@@ -613,6 +641,8 @@ class Ui_Form(object):
         else:
             self.forged_packet = temp
             self.flag = 1
+        if self.IP_load.text() is not "":
+            self.forged_packet = self.forged_packet/self.IP_load.text()
 
     """构造TCP包"""
     def TCP_send_clicked(self):
@@ -631,6 +661,8 @@ class Ui_Form(object):
         else:
             self.forged_packet = temp
             flag = 1
+        if self.TCP_load.text() is not "":
+            self.forged_packet = self.forged_packet/self.TCP_load.text()
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
     """构造ICMP包"""
@@ -647,6 +679,8 @@ class Ui_Form(object):
         else:
             self.forged_packet = temp
             flag = 1
+        if self.ICMP_load.text() is not "":
+            self.forged_packet = self.forged_packet/self.ICMP_load.text()
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
     """构造UDP包"""
@@ -661,7 +695,9 @@ class Ui_Form(object):
             self.forged_packet = self.forged_packet / temp
         else:
             self.forged_packet = temp
-            flag = 1
+            self.flag = 1
+        if self.UDP_load.text() is not "":
+            self.forged_packet = self.forged_packet/self.UDP_load.text()
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
     """构造ARP包"""
@@ -681,7 +717,9 @@ class Ui_Form(object):
             self.forged_packet = self.forged_packet / temp
         else:
             self.forged_packet = temp
-            flag = 1
+            self.flag = 1
+        if self.ARP_load.text() is not "":
+            self.forged_packet = self.forged_packet/self.ARP_load.text()
         self.packet_browser.setText(self.forged_packet.show(dump=True))
 
     """发送包"""
@@ -731,3 +769,6 @@ def startForged():
     ui.setupUi((widget))
     widget.show()
     app.exec_()
+
+if __name__ == '__main__':
+    startForged()

@@ -118,122 +118,127 @@ class Core():
         处理抓到的数据包
         :parma packet: 需要处理分类的包
         """
-        # 如果暂停，则不对列表进行更新操作
-        if not self.pause_flag and packet.name == "Ethernet":
-            details = []
-            if self.packet_id == 1:
-                self.start_timestamp = packet.time
-            packet_time = packet.time - self.start_timestamp
-            #第二层
-            ether_type = packet.payload.name
-            version_add = ""
-            # IPv4
-            if ether_type == "IP":
-                source = packet[IP].src
-                destination = packet[IP].dst
-                self.counter["ipv4"] += 1
-            # IPv6
-            elif ether_type == "IPv6":
-                source = packet[IPv6].src
-                destination = packet[IPv6].dst
-                version_add = "v6"
-                self.counter["ipv6"] += 1
-            # ARP
-            elif ether_type == "ARP":
-                self.counter["arp"] += 1
-                protocol = ether_type
-                source = packet[Ether].src
-                destination = packet[Ether].dst
-                if destination == "ff:ff:ff:ff:ff:ff":
-                    destination = "Broadcast"
-            else:
-                # 其他协议不处理
-                return
-            if ether_type != "ARP":
-                protocol = packet.payload.payload.name
-                sport = None
-                dport = None
-                if protocol == "TCP":
-                    sport = packet[TCP].sport
-                    dport = packet[TCP].dport
-                    self.counter["tcp"] += 1
-                elif protocol == "UDP":
-                    sport = packet[UDP].sport
-                    dport = packet[UDP].dport
-                    self.counter["udp"] += 1
-                elif len(protocol) >= 4 and protocol[0:4] == "ICMP":
-                    protocol = "ICMP"
-                    protocol += version_add
-                    self.counter["icmp"] += 1
+        try:
+            # 如果暂停，则不对列表进行更新操作
+            if not self.pause_flag and packet.name == "Ethernet":
+                details = []
+                if self.packet_id == 1:
+                    self.start_timestamp = packet.time
+                packet_time = packet.time - self.start_timestamp
+                #第二层
+                ether_type = packet.payload.name
+                version_add = ""
+                # IPv4
+                if ether_type == "IP":
+                    source = packet[IP].src
+                    destination = packet[IP].dst
+                    self.counter["ipv4"] += 1
+                # IPv6
+                elif ether_type == "IPv6":
+                    source = packet[IPv6].src
+                    destination = packet[IPv6].dst
+                    version_add = "v6"
+                    self.counter["ipv6"] += 1
+                # ARP
+                elif ether_type == "ARP":
+                    self.counter["arp"] += 1
+                    protocol = ether_type
+                    source = packet[Ether].src
+                    destination = packet[Ether].dst
+                    if destination == "ff:ff:ff:ff:ff:ff":
+                        destination = "Broadcast"
                 else:
+                    # 其他协议不处理
                     return
-                if sport and dport:
-                    # HTTPS
-                    if sport == 443 or dport == 443:
-                        https = packet.payload.payload.payload.__bytes__().hex(
-                        )
-                        if len(https) >= 10 and https[3] == '3':
-                            if https[0:2] in content_type and https[
-                                    5] in version:
-                                protocol = version[https[5]]
-                    elif sport in ports:
-                        protocol = ports[sport] + version_add
-                    elif dport in ports:
-                        protocol = ports[dport] + version_add
-            details.append(str(self.packet_id))
-            details.append(str((packet_time))[:9])
-            details.append(source)
-            details.append(destination)
-            details.append(protocol)
-            details.append(str(len(packet)))
-            info = packet.summary()
-            details.append(info)
-            self.main_window.add_tableview_row(details)
-            self.packet_id += 1
-            if writer:
-                writer.write(packet)
+                if ether_type != "ARP":
+                    protocol = packet.payload.payload.name
+                    sport = None
+                    dport = None
+                    if protocol == "TCP":
+                        sport = packet[TCP].sport
+                        dport = packet[TCP].dport
+                        self.counter["tcp"] += 1
+                    elif protocol == "UDP":
+                        sport = packet[UDP].sport
+                        dport = packet[UDP].dport
+                        self.counter["udp"] += 1
+                    elif len(protocol) >= 4 and protocol[0:4] == "ICMP":
+                        protocol = "ICMP"
+                        protocol += version_add
+                        self.counter["icmp"] += 1
+                    else:
+                        return
+                    if sport and dport:
+                        # HTTPS
+                        if sport == 443 or dport == 443:
+                            https = packet.payload.payload.payload.__bytes__(
+                            ).hex()
+                            if len(https) >= 10 and https[3] == '3':
+                                if https[0:2] in content_type and https[
+                                        5] in version:
+                                    protocol = version[https[5]]
+                        elif sport in ports:
+                            protocol = ports[sport] + version_add
+                        elif dport in ports:
+                            protocol = ports[dport] + version_add
+                details.append(str(self.packet_id))
+                details.append(str((packet_time))[:9])
+                details.append(source)
+                details.append(destination)
+                details.append(protocol)
+                details.append(str(len(packet)))
+                info = packet.summary()
+                details.append(info)
+                self.main_window.add_tableview_row(details)
+                self.packet_id += 1
+                if writer:
+                    writer.write(packet)
+        except:
+            pass
 
     def on_click_item(self, this_id):
         """
         处理点击列表中的项
         :parma this_id: 包对应的packet_id，在packet_list里获取该packet
         """
-        if not this_id or this_id < 1:
-            return
-        previous_packet_time, packet = self.read_packet(this_id - 1)
-        # 详细信息列表, 用于添加进GUI
-        first_return = []
-        second_return = []
-        # 第一层: Frame
-        first_layer = []
-        # on wire的长度
-        packet_wirelen = "%d bytes (%d bits)" % (packet.wirelen,
-                                                 packet.wirelen << 3)
-        # 实际抓到的长度
-        packet_capturedlen = "%d bytes (%d bits)" % (len(packet),
-                                                     len(packet) << 3)
-        frame = "Frame %d: %s on wire, %s captured" % (this_id, packet_wirelen,
-                                                       packet_capturedlen)
-        first_return.append(frame)
-        # 抓包的时间
-        first_layer.append(
-            "Arrival Time: %s" % time_to_formal(packet.time))
-        first_layer.append("Epoch Time: %f seconds" % packet.time)
-        delta_time = packet.time - previous_packet_time
-        first_layer.append(
-            "[Time delta from previous captured frame: %f seconds]" %
-            delta_time)
-        delta_time = packet.time - self.start_timestamp
-        first_layer.append("[Time since first frame: %f seconds]" % delta_time)
-        first_layer.append("Frame Number: %d" % this_id)
-        first_layer.append("Frame Length: %s" % packet_wirelen)
-        first_layer.append("Capture Length: %s" % packet_capturedlen)
-        # 添加第一层信息到二维列表中
-        second_return.append(first_layer)
-        first_temp, second_temp = self.get_next_layer(packet)
-        first_return += first_temp
-        second_return += second_temp
-        # dump=True 将hexdump返回而不是打印
+        try:
+            if not this_id or this_id < 1:
+                return
+            previous_packet_time, packet = self.read_packet(this_id - 1)
+            # 详细信息列表, 用于添加进GUI
+            first_return = []
+            second_return = []
+            # 第一层: Frame
+            first_layer = []
+            # on wire的长度
+            packet_wirelen = "%d bytes (%d bits)" % (packet.wirelen,
+                                                    packet.wirelen << 3)
+            # 实际抓到的长度
+            packet_capturedlen = "%d bytes (%d bits)" % (len(packet),
+                                                        len(packet) << 3)
+            frame = "Frame %d: %s on wire, %s captured" % (this_id, packet_wirelen,
+                                                        packet_capturedlen)
+            first_return.append(frame)
+            # 抓包的时间
+            first_layer.append("Arrival Time: %s" % time_to_formal(packet.time))
+            first_layer.append("Epoch Time: %f seconds" % packet.time)
+            delta_time = packet.time - previous_packet_time
+            first_layer.append(
+                "[Time delta from previous captured frame: %f seconds]" %
+                delta_time)
+            delta_time = packet.time - self.start_timestamp
+            first_layer.append("[Time since first frame: %f seconds]" % delta_time)
+            first_layer.append("Frame Number: %d" % this_id)
+            first_layer.append("Frame Length: %s" % packet_wirelen)
+            first_layer.append("Capture Length: %s" % packet_capturedlen)
+            # 添加第一层信息到二维列表中
+            second_return.append(first_layer)
+            first_temp, second_temp = self.get_next_layer(packet)
+            first_return += first_temp
+            second_return += second_temp
+            # dump=True 将hexdump返回而不是打印
+        except:
+            pass
         return first_return, second_return, hexdump(packet, dump=True)
 
     def get_next_layer(self, packet):
@@ -255,15 +260,16 @@ class Core():
                 ether_dst = packet[packet_class].dst
                 if ether_dst == "ff:ff:ff:ff:ff:ff":
                     ether_dst = "Broadcast (ff:ff:ff:ff:ff:ff)"
-                ethernet = "Ethernet, Src: %s, Dst: %s" % (ether_src, ether_dst)
+                ethernet = "Ethernet, Src: %s, Dst: %s" % (ether_src,
+                                                           ether_dst)
                 first_return.append(ethernet)
                 next_layer.append("Source: %s" % ether_src)
                 next_layer.append("Destination: %s" % ether_dst)
                 ether_type = packet.payload.name
                 if ether_type == "IP":
                     ether_type += "v4"
-                ether_proto = (
-                    "Type: %s (%s)" % (ether_type, hex(packet[packet_class].type)))
+                ether_proto = ("Type: %s (%s)" %
+                               (ether_type, hex(packet[packet_class].type)))
                 next_layer.append(ether_proto)
             # 第三层: 网络层
             # IPv4
@@ -280,7 +286,8 @@ class Core():
                     (packet[packet_class].ihl << 2, packet[packet_class].ihl))
                 next_layer.append("Differentiated Services Field: %s" % hex(
                     packet[packet_class].tos))
-                next_layer.append("Total Length: %d" % packet[packet_class].len)
+                next_layer.append(
+                    "Total Length: %d" % packet[packet_class].len)
                 next_layer.append("Identification: %s (%d)" % (hex(
                     packet[packet_class].id), packet[packet_class].id))
                 next_layer.append(
@@ -288,17 +295,18 @@ class Core():
                                         hex(packet[packet_class].flags.value)))
                 next_layer.append(
                     "Fragment offset: %d" % packet[packet_class].frag)
-                next_layer.append("Time to live: %d" % packet[packet_class].ttl)
+                next_layer.append(
+                    "Time to live: %d" % packet[packet_class].ttl)
                 next_protocol = packet.payload.name
                 if next_protocol == "IP":
                     next_protocol += "v4"
                 next_layer.append("Protocol: %s (%d)" %
-                                (next_protocol, packet[packet_class].proto))
+                                  (next_protocol, packet[packet_class].proto))
                 ip_chksum = packet[packet_class].chksum
                 ip_check = packet_class(raw(packet[packet_class])).chksum
                 next_layer.append("Header checksum: %s" % hex(ip_chksum))
                 next_layer.append("[Header checksum status: " + "Correct]"
-                                if ip_check == ip_chksum else "Incorrect]")
+                                  if ip_check == ip_chksum else "Incorrect]")
                 next_layer.append("Source: %s" % ip_src)
                 next_layer.append("Destination: %s" % ip_dst)
             # IPv6
@@ -306,18 +314,20 @@ class Core():
                 ipv6_src = packet[packet_class].src
                 ipv6_dst = packet[packet_class].dst
                 network = ("Internet Protocol Version 6, Src: %s, Dst: %s" %
-                        (ipv6_src, ipv6_dst))
+                           (ipv6_src, ipv6_dst))
                 first_return.append(network)
                 next_layer.append("Version: %d" % packet[packet_class].version)
                 next_layer.append(
                     "Traffice Class: %s" % hex(packet[packet_class].tc))
-                next_layer.append("Flow Label: %s" % hex(packet[packet_class].fl))
-                next_layer.append("Payload Length: %d" % packet[packet_class].plen)
+                next_layer.append(
+                    "Flow Label: %s" % hex(packet[packet_class].fl))
+                next_layer.append(
+                    "Payload Length: %d" % packet[packet_class].plen)
                 next_protocol = packet.payload.name
                 if next_protocol == "IP":
                     next_protocol += "v4"
                 next_layer.append("Next Header: %s (%d)" %
-                                (next_protocol, packet[packet_class].nh))
+                                  (next_protocol, packet[packet_class].nh))
                 next_layer.append("Hop Limit: %d" % packet[packet_class].hlim)
                 next_layer.append("Source: %s" % ipv6_src)
                 next_layer.append("Destination: %s" % ipv6_dst)
@@ -330,14 +340,17 @@ class Core():
                 next_layer.append(
                     "Hardware type: %d" % packet[packet_class].hwtype)
                 ptype = packet[packet_class].ptype
-                temp_str = "Protocol type: %s" % hex(packet[packet_class].ptype)
+                temp_str = "Protocol type: %s" % hex(
+                    packet[packet_class].ptype)
                 if ptype == 0x0800:
                     temp_str += " (IPv4)"
                 elif ptype == 0x86DD:
                     temp_str += " (IPv6)"
                 next_layer.append(temp_str)
-                next_layer.append("Hardware size: %d" % packet[packet_class].hwlen)
-                next_layer.append("Protocol size: %d" % packet[packet_class].plen)
+                next_layer.append(
+                    "Hardware size: %d" % packet[packet_class].hwlen)
+                next_layer.append(
+                    "Protocol size: %d" % packet[packet_class].plen)
                 temp_str = "Opcode: %d" % arp_op
                 if arp_op in arp_dict:
                     temp_str += " (%s)" % arp_dict[arp_op]
@@ -355,26 +368,28 @@ class Core():
                 src_port = packet[packet_class].sport
                 dst_port = packet[packet_class].dport
                 transport = (
-                    "Transmission Control Protocol, Src Port: %d, Dst Port: %d" %
-                    (src_port, dst_port))
+                    "Transmission Control Protocol, Src Port: %d, Dst Port: %d"
+                    % (src_port, dst_port))
                 first_return.append(transport)
                 next_layer.append("Source Port: %d" % src_port)
                 next_layer.append("Destination Port: %d" % dst_port)
-                next_layer.append("Sequence number: %d" % packet[packet_class].seq)
+                next_layer.append(
+                    "Sequence number: %d" % packet[packet_class].seq)
                 next_layer.append(
                     "Acknowledgment number: %d" % packet[packet_class].ack)
                 tcp_head_length = packet[packet_class].dataofs
                 next_layer.append("Header Length: %d bytes (%d)" %
-                                (tcp_head_length << 2, tcp_head_length))
-                next_layer.append("Flags: %s (%d)" % (hex(
-                    packet[packet_class].flags.value), packet[packet_class].flags))
+                                  (tcp_head_length << 2, tcp_head_length))
+                next_layer.append(
+                    "Flags: %s (%d)" % (hex(packet[packet_class].flags.value),
+                                        packet[packet_class].flags))
                 next_layer.append(
                     "Window size value: %d" % packet[packet_class].window)
                 tcp_chksum = packet[packet_class].chksum
                 tcp_check = packet_class(raw(packet[packet_class])).chksum
                 next_layer.append("Checksum: %s" % hex(tcp_chksum))
-                next_layer.append("[Checksum status: " + "Correct]" if tcp_check ==
-                                tcp_chksum else "Incorrect]")
+                next_layer.append("[Checksum status: " + "Correct]"
+                                  if tcp_check == tcp_chksum else "Incorrect]")
                 next_layer.append(
                     "Urgent pointer: %d" % packet[packet_class].urgptr)
                 options = packet[packet_class].options
@@ -390,8 +405,9 @@ class Core():
             elif protocol == "UDP" or protocol == "UDP in ICMP":
                 src_port = packet[packet_class].sport
                 dst_port = packet[packet_class].dport
-                transport = ("User Datagram Protocol, Src Port: %d, Dst Port: %d" %
-                            (src_port, dst_port))
+                transport = (
+                    "User Datagram Protocol, Src Port: %d, Dst Port: %d" %
+                    (src_port, dst_port))
                 first_return.append(transport)
                 next_layer.append("Source Port: %d" % src_port)
                 next_layer.append("Destination Port: %d" % dst_port)
@@ -399,8 +415,8 @@ class Core():
                 udp_chksum = packet[packet_class].chksum
                 udp_check = packet_class(raw(packet[packet_class])).chksum
                 next_layer.append("Chksum: %s" % hex(udp_chksum))
-                next_layer.append("[Checksum status: " + "Correct]" if udp_check ==
-                                udp_chksum else "Incorrect]")
+                next_layer.append("[Checksum status: " + "Correct]"
+                                  if udp_check == udp_chksum else "Incorrect]")
             elif protocol == "ICMP" or protocol == "ICMP in ICMP":
                 transport = "Internet Control Message Protocol"
                 first_return.append(transport)
@@ -413,20 +429,21 @@ class Core():
                 temp_str = "Code: %d" % packet_code
                 if packet_type in icmpcodes:
                     if packet_code in icmpcodes[packet_type]:
-                        temp_str += " (%s)" % icmpcodes[packet_type][packet_code]
+                        temp_str += " (%s)" % icmpcodes[packet_type][
+                            packet_code]
                 next_layer.append(temp_str)
                 icmp_chksum = packet[packet_class].chksum
                 icmp_check = packet_class(raw(packet[packet_class])).chksum
                 next_layer.append("Checksum: %s" % hex(icmp_chksum))
-                next_layer.append("[Checksum status: " + "Correct]" if icmp_check
-                                == icmp_chksum else "Incorrect]")
+                next_layer.append("[Checksum status: " + "Correct]" if
+                                  icmp_check == icmp_chksum else "Incorrect]")
                 if packet_type == 0 or packet_type == 8 or protocol == "ICMP in ICMP":
                     next_layer.append(
                         "Identifier: %d (%s)" % (packet[packet_class].id,
-                                                hex(packet[packet_class].id)))
-                    next_layer.append(
-                        "Sequence number: %d (%s)" %
-                        (packet[packet_class].seq, hex(packet[packet_class].seq)))
+                                                 hex(packet[packet_class].id)))
+                    next_layer.append("Sequence number: %d (%s)" %
+                                      (packet[packet_class].seq,
+                                       hex(packet[packet_class].seq)))
                     data_length = len(packet.payload)
                     if data_length > 0:
                         next_layer.append(
@@ -449,18 +466,19 @@ class Core():
                                 packet_code]
                     next_layer.append(temp_str)
                     icmpv6_cksum = packet[packet_class].cksum
-                    icmpv6_check = packet_class(raw(packet[packet_class])).cksum
+                    icmpv6_check = packet_class(raw(
+                        packet[packet_class])).cksum
                     next_layer.append("Checksum: %s" % hex(icmpv6_cksum))
                     next_layer.append("[Checksum status: " +
-                                    "Correct]" if icmpv6_check ==
-                                    icmpv6_cksum else "Incorrect]")
+                                      "Correct]" if icmpv6_check ==
+                                      icmpv6_cksum else "Incorrect]")
                     if proto_type == "Echo Request" or proto_type == "Echo Reply":
-                        next_layer.append(
-                            "Identifier: %d (%s)" % (packet[packet_class].id,
-                                                    hex(packet[packet_class].id)))
+                        next_layer.append("Identifier: %d (%s)" %
+                                          (packet[packet_class].id,
+                                           hex(packet[packet_class].id)))
                         next_layer.append("Sequence number: %d (%s)" %
-                                        (packet[packet_class].seq,
-                                        hex(packet[packet_class].seq)))
+                                          (packet[packet_class].seq,
+                                           hex(packet[packet_class].seq)))
                         data_length = packet[packet_class].plen - 8
                         if data_length > 0:
                             next_layer.append(
@@ -533,15 +551,15 @@ class Core():
                         next_layer.append(
                             "Reserved: %d" % packet[packet_class].res)
                         next_layer.append("Router lifetime (s): %d" %
-                                        packet[packet_class].routerlifetime)
+                                          packet[packet_class].routerlifetime)
                         next_layer.append("Reachable time (ms): %d" %
-                                        packet[packet_class].reachabletime)
+                                          packet[packet_class].reachabletime)
                         next_layer.append("Retrans timer (ms): %d" %
-                                        packet[packet_class].retranstimer)
+                                          packet[packet_class].retranstimer)
                     elif proto_type == "Destination Unreachable":
-                        next_layer.append(
-                            "Length: %d (%s)" % (packet[packet_class].length,
-                                                hex(packet[packet_class].length)))
+                        next_layer.append("Length: %d (%s)" %
+                                          (packet[packet_class].length,
+                                           hex(packet[packet_class].length)))
                         next_layer.append(
                             "Unused: %d" % packet[packet_class].unused)
                     elif proto_type == "Packet too big":
@@ -549,9 +567,9 @@ class Core():
                     elif proto_type == "Parameter problem":
                         next_layer.append("PTR: %d" % packet[packet_class].ptr)
                     elif proto_type == "Time exceeded":
-                        next_layer.append(
-                            "Length: %d (%s)" % (packet[packet_class].length,
-                                                hex(packet[packet_class].length)))
+                        next_layer.append("Length: %d (%s)" %
+                                          (packet[packet_class].length,
+                                           hex(packet[packet_class].length)))
                         next_layer.append(
                             "Unused: %d" % packet[packet_class].unused)
                 else:
@@ -583,24 +601,25 @@ class Core():
                         length = packet[packet_class].len
                         next_layer.append(
                             "Length: %d (%d bytes)" % (length, length << 3))
-                        next_layer.append(
-                            "Prefix Length: %d" % packet[packet_class].prefixlen)
+                        next_layer.append("Prefix Length: %d" %
+                                          packet[packet_class].prefixlen)
                         set_str = "Set (1)"
                         not_set_str = "Not set (0)"
                         next_layer.append("On-link flag (L): %s" %
-                                        set_str if packet[packet_class].L ==
-                                        1 else not_set_str)
+                                          set_str if packet[packet_class].L ==
+                                          1 else not_set_str)
                         next_layer.append(
                             "Autonomous address-configuration flag (A): %s" %
                             set_str if packet[packet_class].A ==
                             1 else not_set_str)
                         next_layer.append("Router address flag(R): %s" %
-                                        set_str if packet[packet_class].R ==
-                                        1 else not_set_str)
+                                          set_str if packet[packet_class].R ==
+                                          1 else not_set_str)
                         next_layer.append("Valid Lifetime: %d" %
-                                        packet[packet_class].validlifetime)
-                        next_layer.append("Preferred Lifetime: %d" %
-                                        packet[packet_class].preferredlifetime)
+                                          packet[packet_class].validlifetime)
+                        next_layer.append(
+                            "Preferred Lifetime: %d" %
+                            packet[packet_class].preferredlifetime)
                         next_layer.append(
                             "Reserverd: %d" % packet[packet_class].res2)
                         next_layer.append("Prefix: %s" % packet_prefix)
@@ -627,13 +646,13 @@ class Core():
                 total_length = len(https)
                 temp_length = 0
                 while len(https) >= 10:
-                    if https[3] == '3' and https[0:2] in content_type and https[
-                            5] in version:
+                    if https[3] == '3' and https[
+                            0:2] in content_type and https[5] in version:
                         protocol = version[https[5]]
                         cont_type = content_type[https[0:2]]
                         first_return.append("%s : %s" % (protocol, cont_type))
                         next_layer.append("Content Type: %s (%d)" %
-                                        (cont_type, int(https[0:2], 16)))
+                                          (cont_type, int(https[0:2], 16)))
                         next_layer.append(
                             "Version: %s (0x%s)" % (protocol, https[2:6]))
                         length = int(https[6:10], 16)
@@ -657,11 +676,10 @@ class Core():
             first_temp, second_temp = self.get_next_layer(packet.payload)
             first_return += first_temp
             second_return += second_temp
-        except AttributeError:
+        except:
             # 未知数据包
             first_return.clear()
             second_return.clear()
-            pass
         return first_return, second_return
 
     def flow_count(self, netcard=None):
