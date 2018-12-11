@@ -633,7 +633,7 @@ class Ui_Form(object):
             id=int(self.IP_id.text()),
             frag=int(self.IP_frag.text()),
             ttl=int(self.IP_ttl.text()),
-            chksum=self.IP_chksum,
+            chksum=self.IP_chksum.text(),
             src=self.IP_src.text(),
             dst=self.IP_dst.text())
         if self.flag == 1:

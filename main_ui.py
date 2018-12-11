@@ -11,8 +11,6 @@ import json
 from monitor_system import start_monitor
 from forged_packet import startForged
 from multiprocessing import Process
-from threading import Thread
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 # 设置全局字体，以支持中文
 plt.rcParams['font.sans-serif'] = ['SimHei']
@@ -60,7 +58,7 @@ class Ui_MainWindow(QMainWindow):
         with open('data.json', 'r') as file_obj:
             '''读取json文件'''
             old_font = json.load(file_obj)  # 返回列表数据，也支持字典
-        if old_font["font"] is not None:
+        if old_font["font"]:
             font.setFamily(old_font["font"])
             font.setPointSize(int(old_font["size"]))
         else:
@@ -95,6 +93,8 @@ class Ui_MainWindow(QMainWindow):
         self.info_tree.setStyleSheet("background:transparent;")
         self.info_tree.setSortingEnabled(True)
         self.info_tree.sortItems(0, Qt.AscendingOrder)
+        self.info_tree.setColumnWidth(2, 150)
+        self.info_tree.setColumnWidth(3, 150)
         for i in range(7):
             self.info_tree.headerItem().setBackground(i,
                                                       QBrush(QColor(Qt.white)))
@@ -135,22 +135,22 @@ class Ui_MainWindow(QMainWindow):
         self.gridLayout.addLayout(self.verticalLayout, 1, 0, 1, 1)
 
         #过滤器输入框
-        self.Filer = QLineEdit(self.centralWidget)
-        self.Filer.setPlaceholderText("Apply a capture filter … ")
-        self.Filer.setStyleSheet("background:white")
-        self.Filer.setFont(font)
-        self.horizontalLayout.addWidget(self.Filer)
+        self.Filter = QLineEdit(self.centralWidget)
+        self.Filter.setPlaceholderText("Apply a capture filter … ")
+        self.Filter.setStyleSheet("background:white")
+        self.Filter.setFont(font)
+        self.horizontalLayout.addWidget(self.Filter)
 
         #过滤器按钮
-        self.FilerButton = QPushButton(self.centralWidget)
-        self.FilerButton.setText("开始")
+        self.FilterButton = QPushButton(self.centralWidget)
+        self.FilterButton.setText("开始")
         icon1 = QIcon()
         icon1.addPixmap(QPixmap("img/go.png"), QIcon.Normal, QIcon.Off)
-        self.FilerButton.setIcon(icon1)
-        self.FilerButton.setIconSize(QSize(20, 20))
-        self.FilerButton.setStyleSheet("background:white")
-        self.FilerButton.clicked.connect(self.on_start_action_clicked)
-        self.horizontalLayout.addWidget(self.FilerButton)
+        self.FilterButton.setIcon(icon1)
+        self.FilterButton.setIconSize(QSize(20, 20))
+        self.FilterButton.setStyleSheet("background:white")
+        self.FilterButton.clicked.connect(self.on_start_action_clicked)
+        self.horizontalLayout.addWidget(self.FilterButton)
         """
            网卡选择框
         """
@@ -268,9 +268,10 @@ class Ui_MainWindow(QMainWindow):
 
         #帮助文档
         action_readme = QAction(self)
-        action_readme.setText("说明文档")
+        action_readme.setText("使用文档")
         action_about = QAction(self)
         action_about.setText("关于")
+        action_about.triggered.connect(self.on_action_about_clicked)
 
         #打开文件键
         action_openfile = QAction(self)
@@ -389,7 +390,8 @@ class Ui_MainWindow(QMainWindow):
             if self.Forged and self.Forged.is_alive():
                 self.Forged.terminate()
             exit()
-        if self.core.start_flag is True or self.core.pause_flag is True:
+
+        if self.core.start_flag or self.core.pause_flag:
             # 没有停止抓包
             reply = QMessageBox.question(
                 self, 'Message', "您是否要停止捕获，并保存已捕获的分组?\n警告：若不保存，您捕获的分组将会丢失",
@@ -404,7 +406,7 @@ class Ui_MainWindow(QMainWindow):
                 self.core.stop_capture()
                 self.on_action_savefile_clicked()
                 close_to_do()
-        elif self.core.stop_flag is True and self.core.save_flag is False:
+        elif self.core.stop_flag and not self.core.save_flag:
             """
                 已停止，但没有保存文件
             """
@@ -419,7 +421,7 @@ class Ui_MainWindow(QMainWindow):
                 close_to_do()
             else:
                 close_to_do()
-        elif self.core.save_flag is True or self.core.start_flag is False:
+        elif self.core.save_flag or not self.core.start_flag:
             """
                 未工作状态
             """
@@ -446,10 +448,10 @@ class Ui_MainWindow(QMainWindow):
     def on_tableview_clicked(self):
         selected_row = self.info_tree.currentItem().text(0)  #当前选择的编号
         #表格停止追踪更新
-        if selected_row is not None:
+        if selected_row and selected_row.isdigit():
             self.timer.stop()
             self.show_infoTree((int)(selected_row))
-            if self.core.pause_flag is False and self.core.stop_flag is False:
+            if not self.core.pause_flag and not self.core.stop_flag:
                 self.action_update.setDisabled(False)
 
     """
@@ -477,45 +479,6 @@ class Ui_MainWindow(QMainWindow):
                 item1_1 = QTreeWidgetItem(item1)
                 item1_1.setText(0, childList[i][j])
         self.set_hex_text(hex_dump)
-
-    #数据包背景颜色字典
-    color_dict = {
-        "UDP": "#daeeff",
-        "HTTPS": "#e4ffc7",
-        "HTTP": "#e4ffc7",
-        "SSLv3": "#FFFFCC",
-        "TLSv1.0": "#FFFFCC",
-        "TLSv1.1": "# c797ff",
-        "TLSv1.2": "#bfbdff",
-        "DNS": "#CCFF99",
-        "TCP": "#e7e6ff",
-        "ICMPv6": "#fce0ff",
-        "ICMP": "#fce0ff",
-        "ARP": "#faf0d7",
-        "SSDP": "#ffe3e5",
-        "SSDPv6": "#ffe3e5"
-    }
-    """
-       表格添加行
-    """
-
-    def add_tableview_row(self, mylist):
-        item = QTreeWidgetItem(self.info_tree)
-        """
-            添加行内容
-        """
-        for i in range(7):
-            if i == 0 or i == 5:
-                item.setData(i, Qt.DisplayRole, float(mylist[i]))
-            else:
-                item.setText(i, mylist[i])
-        """
-            根据协议类型不同设置颜色
-        """
-        color = self.color_dict.get(mylist[4])
-        if color is not None:
-            for i in range(7):
-                item.setBackground(i, QBrush(QColor(color)))
 
     """
        获取当前选择的网卡
@@ -581,20 +544,19 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_start_action_clicked(self):
-        if self.core.stop_flag == True:
+        if self.core.stop_flag:
             # 重新开始清空面板内容
-            # self.table_view_clear()
             self.info_tree.clear()
             self.treeWidget.clear()
             self.set_hex_text("")
-        self.core.start_capture(self.get_choose_nic(), self.Filer.text())
+        self.core.start_capture(self.get_choose_nic(), self.Filter.text())
         """
            点击开始后，过滤器不可编辑，开始按钮、网卡选择框全部设为不可选
            激活暂停、停止键、重新开始键
         """
         self.start_action.setDisabled(True)
-        self.Filer.setEnabled(False)
-        self.FilerButton.setEnabled(False)
+        self.Filter.setEnabled(False)
+        self.FilterButton.setEnabled(False)
         self.choose_nicbox.setEnabled(False)
         self.actionRestart.setDisabled(False)
         self.pause_action.setEnabled(True)
@@ -613,8 +575,8 @@ class Ui_MainWindow(QMainWindow):
         self.start_action.setEnabled(True)
         self.stop_action.setDisabled(False)
         self.actionRestart.setDisabled(False)
-        self.Filer.setDisabled(True)
-        self.FilerButton.setDisabled(True)
+        self.Filter.setDisabled(True)
+        self.FilterButton.setDisabled(True)
         self.choose_nicbox.setDisabled(False)
         self.pause_action.setDisabled(True)
         self.action_update.setDisabled(True)
@@ -632,14 +594,11 @@ class Ui_MainWindow(QMainWindow):
         self.stop_action.setDisabled(True)
         self.pause_action.setDisabled(True)
         self.start_action.setEnabled(True)
-        self.Filer.setDisabled(False)
-        self.FilerButton.setDisabled(False)
+        self.Filter.setDisabled(False)
+        self.FilterButton.setDisabled(False)
         self.choose_nicbox.setDisabled(False)
         self.action_update.setDisabled(True)
         self.timer.stop()
-
-    def on_filerbutton_clicked(self):
-        string = self.Filer.text()
 
     """
        重新开始键响应事件
@@ -648,7 +607,7 @@ class Ui_MainWindow(QMainWindow):
     def on_actionRestart_clicked(self):
         # 重新开始清空面板内容
         self.timer.stop()
-        self.core.restart_capture(self.get_choose_nic(), self.Filer.text())
+        self.core.restart_capture(self.get_choose_nic(), self.Filter.text())
         self.info_tree.clear()
         self.treeWidget.clear()
         self.set_hex_text("")
@@ -658,8 +617,8 @@ class Ui_MainWindow(QMainWindow):
         """
         self.actionRestart.setDisabled(False)
         self.start_action.setDisabled(True)
-        self.Filer.setEnabled(False)
-        self.FilerButton.setEnabled(False)
+        self.Filter.setEnabled(False)
+        self.FilterButton.setEnabled(False)
         self.choose_nicbox.setEnabled(False)
         self.pause_action.setEnabled(True)
         self.stop_action.setEnabled(True)
@@ -668,6 +627,7 @@ class Ui_MainWindow(QMainWindow):
     """
         IP地址类型统计图绘制
     """
+
     def on_IP_statistics_clicked(self):
         IP = self.core.get_network_count()
         IPv4_count = IP["ipv4"]
@@ -761,7 +721,7 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_action_openfile_clicked(self):
-        if self.core.start_flag is True or self.core.pause_flag is True:
+        if self.core.start_flag or self.core.pause_flag:
             QMessageBox.warning(self, "警告", "请停止当前抓包！")
             return
         self.core.open_pcap_file()
@@ -771,7 +731,7 @@ class Ui_MainWindow(QMainWindow):
     """
 
     def on_action_savefile_clicked(self):
-        if self.core.start_flag is True or self.core.pause_flag is True:
+        if self.core.start_flag or self.core.pause_flag:
             QMessageBox.warning(self, "警告", "请停止当前抓包！")
             return
         self.core.save_captured_to_pcap()
@@ -786,10 +746,16 @@ class Ui_MainWindow(QMainWindow):
             self.Monitor.start()
 
     ''
+
     def forged_action_clicked(self):
         if not self.Forged or not self.Forged.is_alive():
             self.Forged = Process(target=startForged)
             self.Forged.start()
+
+    about = "软件著作者：张桓皓 张兴\n\n" + "软件主要功能如下：\n" + "1.对网络接口数据包尽可能多的捕获，可以将网卡设置为混杂模式，然后进行数据包的采集；\n" + "2.对捕获的数据包进行一定的解析，将报文在网络层和传输层逐字段展开，对数据包的协议类型、源目的地址、数据包截获时间、数据包内容进行分析；\n" + "3.根据用户不同的要求能够依据特定指定地址、特定协议类型相关包等条件进行自定义监视；\n" + "4.针对应用进行流量监测，监测结果输出实时流量图显示，管理员可设置流量上限，当应用流量超过这个最高限度时可以向管理员进行报警；\n" + "5.系统提供了多种方式显示结果，如以饼状图的形式统计ARP报文、TCP报文、UDP报文ICMP报文进行统计，以柱状图的形式统计IPv4报文、IPv6报文进行统计，以折线图的形式实时显示具体应用流量；\n" + "6.实现数据包保存，便于日后分析，即将捕获到的数据包，可另存为一个文件，并能被本系统所读取和展示；\n" + "7.伪造报文实现网络反攻击或进行深入微调IP或传输层的域。\n\n" + "*解释权归著作者所有"
+
+    def on_action_about_clicked(self):
+        QMessageBox.information(self, "关于", self.about)
 
     """
        退出点击事件
@@ -824,13 +790,13 @@ class Ui_MainWindow(QMainWindow):
     def keyReleaseEvent(self, event):
         if event.key() == Qt.Key_Up or event.key() == Qt.Key_Down:
             self.timer.stop()
-            row = self.info_tree.currentIndex().row()
-            self.show_infoTree(row)
-            self.action_update.setDisabled(False)
+            selected_row = self.info_tree.currentItem().text(0)
+            if selected_row and selected_row.isdigit():
+                self.show_infoTree(int(selected_row))
+                self.action_update.setDisabled(False)
         if event.key() == Qt.Key_F5:
             self.timer.start(flush_time)
             self.action_update.setDisabled(True)
-
 
 
 def start():
