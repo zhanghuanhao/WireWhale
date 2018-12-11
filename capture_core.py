@@ -4,8 +4,10 @@ import os
 import shutil
 from tempfile import NamedTemporaryFile
 from threading import Event, Thread
-from PyQt5.QtWidgets import QFileDialog, QMessageBox
-from scapy.compat import raw
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QTreeWidgetItem
+from PyQt5.QtGui import QColor, QBrush
+from PyQt5.Qt import Qt
+
 from scapy.layers.inet import *
 from scapy.layers.inet6 import *
 from scapy.layers.l2 import Ether
@@ -57,15 +59,9 @@ ports = {
     1900: "SSDP",
     53: "DNS",
     123: "NTP",
-    23: "Telnet",
     21: "FTP",
-    20: "FTP_data",
-    22: "SSH",
-    25: "SMTP",
-    110: "POP3",
-    143: "IMAP",
-    161: "SNMP",
-    69: "TFTP"
+    20: "FTP_Data",
+    22: "SSH"
 }
 
 # HTTPS解析
@@ -75,10 +71,33 @@ content_type = {
     '16': "Handshake Protocol",
     '17': "Application Data"
 }
-version = {'0': "SSLv3", '1': "TLSv1.0", '2': "TLSv1.1", '3': "TLSv1.2"}
+version = {'00': "SSLv3", '01': "TLSv1.0", '02': "TLSv1.1", '03': "TLSv1.2"}
 
 # 停止抓包的线程
 stop_capturing_thread = Event()
+
+# 数据包背景颜色字典
+color_dict = {
+    "TCP": "#e7e6ff",
+    "TCPv6": "#e7e6ff",
+    "UDP": "#daeeff",
+    "UDPv6": "#daeeff",
+    "ARP": "#faf0d7",
+    "SSDP": "#ffe3e5",
+    "SSDPv6": "#ffe3e5",
+    "HTTP": "#caffbe",
+    "HTTPv6": "#caffbe",
+    "SSLv3": "#FFFFCC",
+    "TLSv1.0": "#FFFFCC",
+    "TLSv1.1": "#c797ff",
+    "TLSv1.2": "#bfbdff",
+    "ICMP": "#fce0ff",
+    "ICMPv6": "#fce0ff",
+    "NTP": "#daeeff",
+    "NTPv6": "#daeeff",
+    "DNS": "#CCFF99",
+    "DNSv6": "#CCFF99"
+}
 
 
 class Core():
@@ -119,13 +138,13 @@ class Core():
         :parma packet: 需要处理分类的包
         """
         try:
-            # 如果暂停，则不对列表进行更新操作
+        # 如果暂停，则不对列表进行更新操作
             if not self.pause_flag and packet.name == "Ethernet":
-                details = []
+                protocol = None
                 if self.packet_id == 1:
                     self.start_timestamp = packet.time
                 packet_time = packet.time - self.start_timestamp
-                #第二层
+                # 第二层
                 ether_type = packet.payload.name
                 version_add = ""
                 # IPv4
@@ -157,10 +176,12 @@ class Core():
                     if protocol == "TCP":
                         sport = packet[TCP].sport
                         dport = packet[TCP].dport
+                        protocol += version_add
                         self.counter["tcp"] += 1
                     elif protocol == "UDP":
                         sport = packet[UDP].sport
                         dport = packet[UDP].dport
+                        protocol += version_add
                         self.counter["udp"] += 1
                     elif len(protocol) >= 4 and protocol[0:4] == "ICMP":
                         protocol = "ICMP"
@@ -171,25 +192,29 @@ class Core():
                     if sport and dport:
                         # HTTPS
                         if sport == 443 or dport == 443:
-                            https = packet.payload.payload.payload.__bytes__(
-                            ).hex()
-                            if len(https) >= 10 and https[3] == '3':
+                            https = packet.payload.payload.payload.__bytes__().hex(
+                            )
+                            if len(https) >= 10 and https[2:4] == '03':
                                 if https[0:2] in content_type and https[
-                                        5] in version:
-                                    protocol = version[https[5]]
+                                        4:6] in version:
+                                    protocol = version[https[4:6]]
                         elif sport in ports:
                             protocol = ports[sport] + version_add
                         elif dport in ports:
                             protocol = ports[dport] + version_add
-                details.append(str(self.packet_id))
-                details.append(str((packet_time))[:9])
-                details.append(source)
-                details.append(destination)
-                details.append(protocol)
-                details.append(str(len(packet)))
-                info = packet.summary()
-                details.append(info)
-                self.main_window.add_tableview_row(details)
+                item = QTreeWidgetItem(self.main_window.info_tree)
+                # 根据协议类型不同设置颜色
+                color = color_dict[protocol]
+                for i in range(7):
+                    item.setBackground(i, QBrush(QColor(color)))
+                # 添加行内容
+                item.setData(0, Qt.DisplayRole, self.packet_id)
+                item.setData(1, Qt.DisplayRole, packet_time)
+                item.setText(2, source)
+                item.setText(3, destination)
+                item.setText(4, protocol)
+                item.setData(5, Qt.DisplayRole, len(packet))
+                item.setText(6, packet.summary())
                 self.packet_id += 1
                 if writer:
                     writer.write(packet)
@@ -212,22 +237,24 @@ class Core():
             first_layer = []
             # on wire的长度
             packet_wirelen = "%d bytes (%d bits)" % (packet.wirelen,
-                                                    packet.wirelen << 3)
+                                                     packet.wirelen << 3)
             # 实际抓到的长度
             packet_capturedlen = "%d bytes (%d bits)" % (len(packet),
-                                                        len(packet) << 3)
-            frame = "Frame %d: %s on wire, %s captured" % (this_id, packet_wirelen,
-                                                        packet_capturedlen)
+                                                         len(packet) << 3)
+            frame = "Frame %d: %s on wire, %s captured" % (
+                this_id, packet_wirelen, packet_capturedlen)
             first_return.append(frame)
             # 抓包的时间
-            first_layer.append("Arrival Time: %s" % time_to_formal(packet.time))
+            first_layer.append(
+                "Arrival Time: %s" % time_to_formal(packet.time))
             first_layer.append("Epoch Time: %f seconds" % packet.time)
             delta_time = packet.time - previous_packet_time
             first_layer.append(
                 "[Time delta from previous captured frame: %f seconds]" %
                 delta_time)
             delta_time = packet.time - self.start_timestamp
-            first_layer.append("[Time since first frame: %f seconds]" % delta_time)
+            first_layer.append(
+                "[Time since first frame: %f seconds]" % delta_time)
             first_layer.append("Frame Number: %d" % this_id)
             first_layer.append("Frame Length: %s" % packet_wirelen)
             first_layer.append("Capture Length: %s" % packet_capturedlen)
@@ -646,9 +673,9 @@ class Core():
                 total_length = len(https)
                 temp_length = 0
                 while len(https) >= 10:
-                    if https[3] == '3' and https[
-                            0:2] in content_type and https[5] in version:
-                        protocol = version[https[5]]
+                    if https[2:4] == '03' and https[
+                            0:2] in content_type and https[4:6] in version:
+                        protocol = version[https[4:6]]
                         cont_type = content_type[https[0:2]]
                         first_return.append("%s : %s" % (protocol, cont_type))
                         next_layer.append("Content Type: %s (%d)" %
@@ -712,7 +739,6 @@ class Core():
         writer = PcapWriter(self.temp_file, append=True, sync=True)
         thread = Thread(target=self.flow_count, daemon=True, args=(netcard, ))
         thread.start()
-        # 抓取数据包并将抓到的包存在列表中
         # sniff中的store=False 表示不保存在内存中，防止内存使用过高
         sniff(
             iface=netcard,
@@ -743,10 +769,7 @@ class Core():
                     QMessageBox.Cancel,
                 )
                 if resault == QMessageBox.Yes:
-                    print("先保存数据包, 再进行抓包")
                     self.save_captured_to_pcap()
-                else:
-                    print("直接开始不保存")
             self.stop_flag = False
             self.save_flag = False
             self.pause_flag = False
@@ -773,7 +796,7 @@ class Core():
 
     def pause_capture(self):
         """
-        暂停抓包, 抓包函数仍在进行，只是不更行
+        暂停抓包, 抓包函数仍在进行，只是不更新
         """
         self.pause_flag = True
         self.start_flag = False
