@@ -12,11 +12,6 @@ from monitor_system import start_monitor
 from forged_packet import startForged
 from multiprocessing import Process
 
-# 设置全局字体，以支持中文
-plt.rcParams['font.sans-serif'] = ['SimHei']
-# 解决‘-’表现为方块的问题
-plt.rcParams['axes.unicode_minus'] = False
-
 
 class Ui_MainWindow(QMainWindow):
 
@@ -649,7 +644,7 @@ class Ui_MainWindow(QMainWindow):
 
             # 创建绘图区域
             ax1 = fig.add_subplot(111)
-            ax1.set_title('IPv4 & IPv6 统计图')
+            ax1.set_title('IPv4 & IPv6 Statistical Chart')
 
             # 生成x轴的每个元素的位置，列表是[1,2,3,4]
             xticks = np.arange(1, 3)
@@ -664,9 +659,8 @@ class Ui_MainWindow(QMainWindow):
             # 画柱状图，设置柱的边缘为透明
             bars = ax1.bar(xticks, values, width=bar_width, edgecolor='none')
 
-            # 设置x,y轴的标签
-            ax1.set_xlabel('IP地址类型')
-            ax1.set_ylabel('比例')
+            # 设置y轴的标签
+            ax1.set_ylabel('Proportion')
 
             ax1.set_xticks(xticks)
             ax1.set_xticklabels(IP_type)

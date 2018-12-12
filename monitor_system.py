@@ -8,11 +8,6 @@ import matplotlib.pyplot as plt
 from tools import get_rate, time_to_formal
 from flow_monitor import Monitor
 
-# 设置全局字体，以支持中文
-plt.rcParams['font.sans-serif'] = ['SimHei']
-# 解决‘-’表现为方块的问题
-plt.rcParams['axes.unicode_minus'] = False
-
 
 class Ui_Form(object):
     def setupUi(self, Form):
@@ -34,12 +29,11 @@ class Ui_Form(object):
         self.comboBox = QtWidgets.QComboBox(self.horizontalLayoutWidget)
         self.comboBox.setFont(font)
         self.horizontalLayout.addWidget(self.comboBox)
-
         """流量预警线设置"""
         self.warn_line = QtWidgets.QLineEdit(self.horizontalLayoutWidget)
         self.warn_line.setText("1024")
         self.horizontalLayout.addWidget(self.warn_line)
-        self.label=QtWidgets.QLabel(self.horizontalLayoutWidget)
+        self.label = QtWidgets.QLabel(self.horizontalLayoutWidget)
         self.label.setText("kb/s")
         self.horizontalLayout.addWidget(self.label)
         self.start_button = QtWidgets.QPushButton(self.horizontalLayoutWidget)
@@ -157,13 +151,14 @@ class Ui_Form(object):
             if len(upload) >= 60:
                 upload.pop(0)
                 download.pop(0)
-            self.upload_plot.plot(alert, 'red', linewidth='2', label="预警线")
+            self.upload_plot.plot(
+                alert, 'red', linewidth='2', label="Warning")
             self.upload_plot.legend(loc='upper right')
             self.upload_plot.plot(
-                upload, 'darkorange', linewidth='1', label="上传速度")
+                upload, 'darkorange', linewidth='1', label="Upload")
             self.upload_plot.legend(loc='upper right')
             self.upload_plot.plot(
-                download, 'blue', linewidth='1', label="下载速度")
+                download, 'blue', linewidth='1', label="Download")
             self.upload_plot.legend(loc='upper right')
             self.canvas.draw()
             # 流量警告
