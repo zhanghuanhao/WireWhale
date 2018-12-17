@@ -209,12 +209,14 @@ class Core():
                     item.setBackground(i, QBrush(QColor(color)))
                 # 添加行内容
                 item.setData(0, Qt.DisplayRole, self.packet_id)
-                item.setData(1, Qt.DisplayRole, packet_time)
+                item.setText(1, "%12.6f " % packet_time)
                 item.setText(2, source)
                 item.setText(3, destination)
                 item.setText(4, protocol)
                 item.setData(5, Qt.DisplayRole, len(packet))
                 item.setText(6, packet.summary())
+                # 设置右对齐，为了格式化后不影响排序
+                item.setTextAlignment(1, Qt.AlignRight)
                 self.packet_id += 1
                 if writer:
                     writer.write(packet)

@@ -88,8 +88,12 @@ class Ui_MainWindow(QMainWindow):
         self.info_tree.setStyleSheet("background:transparent;")
         self.info_tree.setSortingEnabled(True)
         self.info_tree.sortItems(0, Qt.AscendingOrder)
+        self.info_tree.setColumnWidth(0, 75)
+        self.info_tree.setColumnWidth(1, 130)
         self.info_tree.setColumnWidth(2, 150)
         self.info_tree.setColumnWidth(3, 150)
+        self.info_tree.setColumnWidth(4, 85)
+        self.info_tree.setColumnWidth(5, 60)
         for i in range(7):
             self.info_tree.headerItem().setBackground(i,
                                                       QBrush(QColor(Qt.white)))
@@ -108,7 +112,6 @@ class Ui_MainWindow(QMainWindow):
         self.treeWidget.setStyleSheet("background:transparent; color:white;")
         self.treeWidget.header().hide()
         self.treeWidget.setFont(font)
-
         # 设为只有一列
         self.treeWidget.setColumnCount(1)
         self.treeWidget.setFrameStyle(QFrame.Box | QFrame.Plain)
