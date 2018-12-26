@@ -1,6 +1,6 @@
 # **WireWhale - 可以侦听、解析、构造数据包的多功能抓包软件**
 ## **简介**
-#### 基于Python3.6，Scapy2.4，可以侦听、解析、构造并发送数据包的多功能抓包软件。其中还包括的扩展功能有：流量监测及攻击检测（Land攻击，Ping of Death）。软件目前支持解析的协议有：IP, IPv6, ARP, TCP, UDP, ICMP, ICMPv6主要协议及扩展头, TLS。
+#### 基于Python3.6，Scapy2.4，可以侦听、解析、构造并发送数据包的多功能抓包软件。其中还包括的扩展功能有：流量监测及攻击检测（Land攻击，Ping of Death）。软件目前支持解析的协议有：IP, IPv6, ARP, TCP, UDP, ICMP, SSDP, ICMPv6主要协议及扩展头, TLS。
 
 ## **源代码结构**
 

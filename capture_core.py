@@ -138,7 +138,7 @@ class Core():
         :parma packet: 需要处理分类的包
         """
         try:
-        # 如果暂停，则不对列表进行更新操作
+            # 如果暂停，则不对列表进行更新操作
             if not self.pause_flag and packet.name == "Ethernet":
                 protocol = None
                 if self.packet_id == 1:
@@ -192,8 +192,8 @@ class Core():
                     if sport and dport:
                         # HTTPS
                         if sport == 443 or dport == 443:
-                            https = packet.payload.payload.payload.__bytes__().hex(
-                            )
+                            https = packet.payload.payload.payload.__bytes__(
+                            ).hex()
                             if len(https) >= 10 and https[2:4] == '03':
                                 if https[0:2] in content_type and https[
                                         4:6] in version:
@@ -434,18 +434,38 @@ class Core():
             elif protocol == "UDP" or protocol == "UDP in ICMP":
                 src_port = packet[packet_class].sport
                 dst_port = packet[packet_class].dport
+                length = packet[packet_class].len
                 transport = (
                     "User Datagram Protocol, Src Port: %d, Dst Port: %d" %
                     (src_port, dst_port))
                 first_return.append(transport)
                 next_layer.append("Source Port: %d" % src_port)
                 next_layer.append("Destination Port: %d" % dst_port)
-                next_layer.append("Length: %d" % packet[packet_class].len)
+                next_layer.append("Length: %d" % length)
                 udp_chksum = packet[packet_class].chksum
                 udp_check = packet_class(raw(packet[packet_class])).chksum
                 next_layer.append("Chksum: %s" % hex(udp_chksum))
                 next_layer.append("[Checksum status: " + "Correct]"
                                   if udp_check == udp_chksum else "Incorrect]")
+                length = len(packet[packet_class].payload)
+                # Have payload
+                if length > 0:
+                    second_return.append(next_layer.copy())
+                    next_layer.clear()
+                    payload = bytes(packet[packet_class].payload)
+                    # SSDP
+                    if src_port == 1900 or dst_port == 1900:
+                        first_return.append(
+                            "Simple Service Discovery Protocol")
+                        payload = bytes.decode(payload).split('\r\n')
+                        for string in payload:
+                            if string:
+                                next_layer.append(string)
+                    # Raw
+                    else:
+                        first_return.append("Data (%d bytes)" % length)
+                        next_layer.append("Data: %s" % payload.hex())
+                        next_layer.append("[Length: %d]" % length)
             elif protocol == "ICMP" or protocol == "ICMP in ICMP":
                 transport = "Internet Control Message Protocol"
                 first_return.append(transport)
