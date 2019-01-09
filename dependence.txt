@@ -1,5 +1,0 @@
-﻿Linux & Windows:
-pip install psutil scapy matplotlib pyqt5
-
-windows:
-pip install wmi pywin32
